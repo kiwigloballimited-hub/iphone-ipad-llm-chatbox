@@ -4,9 +4,10 @@
 <dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- 允许连接任意 HTTP 地址（局域网 IP、Tailscale 100.x.x.x、MagicDNS 域名等）。
+		     注意：不要同时加 NSAllowsLocalNetworking，否则 iOS 会忽略 NSAllowsArbitraryLoads，
+		     只放行本地网络地址，导致 Tailscale 等地址被拦截。 -->
 		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>

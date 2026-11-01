@@ -43,6 +43,8 @@
 
 地址填到端口即可（填写带 `/v1` 的地址也可以）。
 
+**在外面也想用？** 可以用 [Tailscale](https://tailscale.com)：电脑和 iPhone / iPad 都登录同一个 Tailscale 账号后，把地址填成电脑的 Tailscale IP（`http://100.x.x.x:端口`）或 MagicDNS 名称即可。服务器同样需要允许非本机访问（见下文）。
+
 **要识别图片或视频，需要使用视觉模型**，例如 `qwen2.5vl`、`gemma3`、`llama3.2-vision`、`minicpm-v`。
 
 ### 让服务器允许局域网访问
