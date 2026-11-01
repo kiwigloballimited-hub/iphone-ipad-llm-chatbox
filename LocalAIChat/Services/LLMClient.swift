@@ -1,0 +1,277 @@
+import Foundation
+
+/// 发送给模型的一条消息（图片以附件文件名表示，在发送时才读取并 base64 编码）
+struct RequestMessage {
+    var role: Role
+    var text: String
+    var imageFiles: [String] = []
+}
+
+struct GenerationOptions {
+    var model: String
+    var temperature: Double
+    var maxTokens: Int
+}
+
+enum StreamEvent {
+    case content(String)
+    case reasoning(String)
+}
+
+enum LLMError: LocalizedError {
+    case invalidURL(String)
+    case http(Int, String)
+    case server(String)
+    case badResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL(let url):
+            return "服务器地址无效：\(url)"
+        case .http(let code, let body):
+            let detail = LLMError.extractMessage(from: body) ?? body
+            return "服务器返回错误 \(code)：\(detail.prefix(500))"
+        case .server(let message):
+            return "服务器错误：\(message)"
+        case .badResponse:
+            return "无法解析服务器的响应。"
+        }
+    }
+
+    static func extractMessage(from body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let error = json["error"] as? [String: Any], let message = error["message"] as? String { return message }
+        if let error = json["error"] as? String { return error }
+        if let message = json["message"] as? String { return message }
+        return nil
+    }
+
+    /// 把常见的网络错误翻译成可操作的提示
+    static func friendlyDescription(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .cannotConnectToHost, .cannotFindHost:
+                return "无法连接到服务器。请检查：\n1. 地址和端口是否正确；\n2. 服务器是否允许局域网访问（Ollama 需设置环境变量 OLLAMA_HOST=0.0.0.0，LM Studio 需开启「在局域网中提供服务」）；\n3. 电脑防火墙是否放行该端口。"
+            case .notConnectedToInternet, .networkConnectionLost:
+                return "网络不可用。请确认设备已连接到与服务器相同的 Wi-Fi，并在「设置 › 隐私与安全性 › 本地网络」中允许本应用访问。"
+            case .timedOut:
+                return "请求超时。模型可能仍在加载，或者图片/视频帧太多，请稍后重试或减少附件。"
+            case .appTransportSecurityRequiresSecureConnection:
+                return "系统阻止了不安全的 HTTP 连接。"
+            default:
+                return urlError.localizedDescription
+            }
+        }
+        return error.localizedDescription
+    }
+}
+
+struct LLMClient {
+    let server: ServerConfig
+    var session: URLSession = .shared
+
+    // MARK: URL helpers
+
+    private var normalizedBase: String {
+        var base = server.baseURL.trimmed
+        while base.hasSuffix("/") { base.removeLast() }
+        let lower = base.lowercased()
+        if !lower.hasPrefix("http://") && !lower.hasPrefix("https://") {
+            base = "http://" + base
+        }
+        return base
+    }
+
+    private func openAIURL(_ path: String) throws -> URL {
+        var base = normalizedBase
+        if !base.hasSuffix("/v1") { base += "/v1" }
+        guard let url = URL(string: base + path) else { throw LLMError.invalidURL(server.baseURL) }
+        return url
+    }
+
+    private func ollamaURL(_ path: String) throws -> URL {
+        var base = normalizedBase
+        if base.hasSuffix("/v1") { base.removeLast(3) }
+        guard let url = URL(string: base + path) else { throw LLMError.invalidURL(server.baseURL) }
+        return url
+    }
+
+    private func makeRequest(url: URL, method: String, body: Data? = nil, timeout: TimeInterval = 600) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !server.apiKey.isBlank {
+            request.setValue("Bearer \(server.apiKey.trimmed)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = body
+        return request
+    }
+
+    // MARK: Models
+
+    func listModels() async throws -> [String] {
+        switch server.apiType {
+        case .openAI:
+            let request = makeRequest(url: try openAIURL("/models"), method: "GET", timeout: 15)
+            let (data, response) = try await session.data(for: request)
+            try check(response, data)
+            struct Response: Decodable {
+                struct Model: Decodable { let id: String }
+                let data: [Model]
+            }
+            return try JSONDecoder().decode(Response.self, from: data).data.map(\.id).sorted()
+        case .ollama:
+            let request = makeRequest(url: try ollamaURL("/api/tags"), method: "GET", timeout: 15)
+            let (data, response) = try await session.data(for: request)
+            try check(response, data)
+            struct Response: Decodable {
+                struct Model: Decodable { let name: String }
+                let models: [Model]
+            }
+            return try JSONDecoder().decode(Response.self, from: data).models.map(\.name).sorted()
+        }
+    }
+
+    private func check(_ response: URLResponse, _ data: Data) throws {
+        guard let http = response as? HTTPURLResponse else { throw LLMError.badResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            throw LLMError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    // MARK: Chat (streaming)
+
+    func streamChat(messages: [RequestMessage], options: GenerationOptions) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let request = try buildChatRequest(messages: messages, options: options)
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else { throw LLMError.badResponse }
+
+                    if !(200..<300).contains(http.statusCode) {
+                        var body = ""
+                        for try await line in bytes.lines {
+                            body += line
+                            if body.count > 4000 { break }
+                        }
+                        throw LLMError.http(http.statusCode, body)
+                    }
+
+                    for try await line in bytes.lines {
+                        try Task.checkCancellation()
+                        let (events, done) = try parse(line: line)
+                        for event in events { continuation.yield(event) }
+                        if done { break }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func buildChatRequest(messages: [RequestMessage], options: GenerationOptions) throws -> URLRequest {
+        var body: [String: Any]
+        let url: URL
+
+        switch server.apiType {
+        case .openAI:
+            url = try openAIURL("/chat/completions")
+            let payload: [[String: Any]] = messages.map { message in
+                let images = message.imageFiles.compactMap(Storage.loadAttachment)
+                if images.isEmpty {
+                    return ["role": message.role.rawValue, "content": message.text]
+                }
+                var parts: [[String: Any]] = []
+                if !message.text.isEmpty {
+                    parts.append(["type": "text", "text": message.text])
+                }
+                for data in images {
+                    parts.append([
+                        "type": "image_url",
+                        "image_url": ["url": "data:image/jpeg;base64," + data.base64EncodedString()],
+                    ])
+                }
+                return ["role": message.role.rawValue, "content": parts]
+            }
+            body = [
+                "model": options.model,
+                "messages": payload,
+                "stream": true,
+                "temperature": options.temperature,
+            ]
+            if options.maxTokens > 0 { body["max_tokens"] = options.maxTokens }
+
+        case .ollama:
+            url = try ollamaURL("/api/chat")
+            let payload: [[String: Any]] = messages.map { message in
+                var item: [String: Any] = ["role": message.role.rawValue, "content": message.text]
+                let images = message.imageFiles.compactMap(Storage.loadAttachment).map { $0.base64EncodedString() }
+                if !images.isEmpty { item["images"] = images }
+                return item
+            }
+            var modelOptions: [String: Any] = ["temperature": options.temperature]
+            if options.maxTokens > 0 { modelOptions["num_predict"] = options.maxTokens }
+            body = [
+                "model": options.model,
+                "messages": payload,
+                "stream": true,
+                "options": modelOptions,
+            ]
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: body)
+        return makeRequest(url: url, method: "POST", body: data)
+    }
+
+    /// 解析一行流式数据。OpenAI 为 SSE（data: {...}），Ollama 为 NDJSON。
+    private func parse(line rawLine: String) throws -> (events: [StreamEvent], done: Bool) {
+        var line = rawLine.trimmed
+        guard !line.isEmpty else { return ([], false) }
+
+        if line.hasPrefix("data:") {
+            line = String(line.dropFirst(5)).trimmed
+            if line == "[DONE]" { return ([], true) }
+        } else if line.hasPrefix(":") || line.hasPrefix("event:") {
+            return ([], false)
+        }
+
+        guard let data = line.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return ([], false)
+        }
+
+        if let error = json["error"] {
+            if let dict = error as? [String: Any], let message = dict["message"] as? String {
+                throw LLMError.server(message)
+            }
+            throw LLMError.server(String(describing: error))
+        }
+
+        var events: [StreamEvent] = []
+
+        // Ollama 原生
+        if let message = json["message"] as? [String: Any] {
+            if let thinking = message["thinking"] as? String, !thinking.isEmpty { events.append(.reasoning(thinking)) }
+            if let content = message["content"] as? String, !content.isEmpty { events.append(.content(content)) }
+            let done = json["done"] as? Bool ?? false
+            return (events, done)
+        }
+
+        // OpenAI 兼容
+        if let choices = json["choices"] as? [[String: Any]], let choice = choices.first {
+            let delta = (choice["delta"] as? [String: Any]) ?? (choice["message"] as? [String: Any]) ?? [:]
+            let reasoning = (delta["reasoning_content"] as? String) ?? (delta["reasoning"] as? String)
+            if let reasoning, !reasoning.isEmpty { events.append(.reasoning(reasoning)) }
+            if let content = delta["content"] as? String, !content.isEmpty { events.append(.content(content)) }
+            return (events, false)
+        }
+
+        return ([], false)
+    }
+}
