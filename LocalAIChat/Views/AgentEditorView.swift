@@ -24,6 +24,7 @@ struct AgentEditorView: View {
             Form {
                 basicSection
                 modelSection
+                thinkingSection
                 personaSection
                 greetingSection
                 parameterSection
@@ -172,6 +173,24 @@ struct AgentEditorView: View {
                 .lineLimit(1...5)
         } header: {
             Text("开场白")
+        }
+    }
+
+    private var thinkingSection: some View {
+        Section {
+            Picker("思考强度", selection: $agent.thinking) {
+                ForEach(ThinkingLevel.allCases) { level in
+                    Text(level.displayName).tag(level)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text(agent.thinking.detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text("思考强度")
+        } footer: {
+            Text("适用于会「思考」的推理模型，如 Qwen3、DeepSeek-R1、gpt-oss。「低 / 中 / 高」三档只对支持分级的模型（如 gpt-oss）有区别，其他模型选这三档都等同于「开启思考」。如果模型不支持思考，App 会自动去掉这个参数重新请求。")
         }
     }
 

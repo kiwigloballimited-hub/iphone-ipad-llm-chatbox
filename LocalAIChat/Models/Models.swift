@@ -91,8 +91,47 @@ struct Agent: Codable, Identifiable, Hashable {
     /// 发送给模型的历史消息条数，0 = 全部
     var contextMessageLimit: Int = 20
     var createdAt = Date()
+    /// 思考强度。可选类型，以便兼容旧版本保存的数据（nil = 自动）
+    var thinkingLevel: ThinkingLevel?
 
     var systemPrompt: String { persona.systemPrompt(agentName: name) }
+
+    var thinking: ThinkingLevel {
+        get { thinkingLevel ?? .auto }
+        set { thinkingLevel = newValue }
+    }
+}
+
+/// 推理模型的思考强度
+enum ThinkingLevel: String, Codable, CaseIterable, Identifiable {
+    /// 不发送任何参数，由模型 / 服务器默认决定
+    case auto
+    case off
+    case low
+    case medium
+    case high
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto: return "自动"
+        case .off: return "关闭"
+        case .low: return "低"
+        case .medium: return "中"
+        case .high: return "高"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .auto: return "使用模型默认设置"
+        case .off: return "不思考，直接回答，速度最快"
+        case .low: return "简单思考"
+        case .medium: return "适度思考"
+        case .high: return "深入思考，回答更慢但更严谨"
+        }
+    }
 }
 
 // MARK: - Chat

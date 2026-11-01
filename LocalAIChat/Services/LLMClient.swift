@@ -11,6 +11,7 @@ struct GenerationOptions {
     var model: String
     var temperature: Double
     var maxTokens: Int
+    var thinking: ThinkingLevel = .auto
 }
 
 enum StreamEvent {
@@ -147,9 +148,17 @@ struct LLMClient {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try buildChatRequest(messages: messages, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-                    guard let http = response as? HTTPURLResponse else { throw LLMError.badResponse }
+                    var request = try buildChatRequest(messages: messages, options: options, includeThinking: true)
+                    var (bytes, response) = try await session.bytes(for: request)
+                    guard var http = response as? HTTPURLResponse else { throw LLMError.badResponse }
+
+                    // 部分服务器 / 模型不认识思考参数（例如模型不支持思考），此时去掉思考参数重试一次
+                    if options.thinking != .auto && [400, 422].contains(http.statusCode) {
+                        request = try buildChatRequest(messages: messages, options: options, includeThinking: false)
+                        (bytes, response) = try await session.bytes(for: request)
+                        guard let retried = response as? HTTPURLResponse else { throw LLMError.badResponse }
+                        http = retried
+                    }
 
                     if !(200..<300).contains(http.statusCode) {
                         var body = ""
@@ -175,7 +184,7 @@ struct LLMClient {
         }
     }
 
-    private func buildChatRequest(messages: [RequestMessage], options: GenerationOptions) throws -> URLRequest {
+    private func buildChatRequest(messages: [RequestMessage], options: GenerationOptions, includeThinking: Bool) throws -> URLRequest {
         var body: [String: Any]
         let url: URL
 
@@ -206,6 +215,9 @@ struct LLMClient {
                 "temperature": options.temperature,
             ]
             if options.maxTokens > 0 { body["max_tokens"] = options.maxTokens }
+            if includeThinking {
+                body.merge(Self.openAIThinkingParameters(options.thinking)) { _, new in new }
+            }
 
         case .ollama:
             url = try ollamaURL("/api/chat")
@@ -223,10 +235,47 @@ struct LLMClient {
                 "stream": true,
                 "options": modelOptions,
             ]
+            if includeThinking, let think = Self.ollamaThinkValue(options.thinking, model: options.model) {
+                body["think"] = think
+            }
         }
 
         let data = try JSONSerialization.data(withJSONObject: body)
         return makeRequest(url: url, method: "POST", body: data)
+    }
+
+    // MARK: Thinking
+
+    /// OpenAI 兼容接口：
+    /// - reasoning_effort：gpt-oss（LM Studio / vLLM / Ollama）等支持分级的模型
+    /// - chat_template_kwargs.enable_thinking：Qwen3 等通过聊天模板开关思考的模型（vLLM / llama.cpp）
+    static func openAIThinkingParameters(_ level: ThinkingLevel) -> [String: Any] {
+        switch level {
+        case .auto:
+            return [:]
+        case .off:
+            return [
+                "reasoning_effort": "none",
+                "chat_template_kwargs": ["enable_thinking": false],
+            ]
+        case .low, .medium, .high:
+            return [
+                "reasoning_effort": level.rawValue,
+                "chat_template_kwargs": ["enable_thinking": true],
+            ]
+        }
+    }
+
+    /// Ollama 原生接口的 think 参数：gpt-oss 支持 "low" / "medium" / "high"，其他模型只支持开 / 关
+    static func ollamaThinkValue(_ level: ThinkingLevel, model: String) -> Any? {
+        switch level {
+        case .auto:
+            return nil
+        case .off:
+            return false
+        case .low, .medium, .high:
+            return model.lowercased().contains("gpt-oss") ? level.rawValue : true
+        }
     }
 
     /// 解析一行流式数据。OpenAI 为 SSE（data: {...}），Ollama 为 NDJSON。

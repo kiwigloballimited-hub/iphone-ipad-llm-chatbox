@@ -42,6 +42,19 @@ struct ChatView: View {
                         if let agent {
                             Text("\(agent.avatar) \(agent.name) · \(store.effectiveModel(for: agent))")
                         }
+                        if let agent {
+                            Picker(selection: Binding(
+                                get: { agent.thinking },
+                                set: { store.setThinking($0, for: agent.id) }
+                            )) {
+                                ForEach(ThinkingLevel.allCases) { level in
+                                    Text(level.displayName).tag(level)
+                                }
+                            } label: {
+                                Label("思考强度：\(agent.thinking.displayName)", systemImage: "brain")
+                            }
+                            .pickerStyle(.menu)
+                        }
                         Button("重新生成最后回复", systemImage: "arrow.clockwise") {
                             store.regenerate(in: conversationID)
                         }

@@ -131,7 +131,13 @@ final class AppStore {
         save()
     }
 
-    func duplicateAgent(_ agent: Agent) {
+    func setThinking(_ level: ThinkingLevel, for agentID: UUID) {
+        guard let i = agents.firstIndex(where: { $0.id == agentID }) else { return }
+        agents[i].thinking = level
+        save()
+    }
+
+        func duplicateAgent(_ agent: Agent) {
         var copy = agent
         copy.id = UUID()
         copy.name = agent.name + " 副本"
@@ -275,7 +281,7 @@ final class AppStore {
         let replyID = reply.id
 
         let client = LLMClient(server: server)
-        let options = GenerationOptions(model: model, temperature: agent.temperature, maxTokens: agent.maxTokens)
+        let options = GenerationOptions(model: model, temperature: agent.temperature, maxTokens: agent.maxTokens, thinking: agent.thinking)
         generating.insert(conversationID)
 
         tasks[conversationID] = Task { [weak self] in
