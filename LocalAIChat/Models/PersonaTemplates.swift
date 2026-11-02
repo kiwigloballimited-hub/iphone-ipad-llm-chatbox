@@ -7,9 +7,10 @@ struct PersonaTemplate: Identifiable {
     let greeting: String
     let temperature: Double
     let persona: Persona
+    var browserEnabled = false
 
     func makeAgent(serverID: UUID?) -> Agent {
-        Agent(
+        var agent = Agent(
             name: name,
             avatar: avatar,
             persona: persona,
@@ -17,6 +18,8 @@ struct PersonaTemplate: Identifiable {
             serverID: serverID,
             temperature: temperature
         )
+        agent.browserEnabled = browserEnabled
+        return agent
     }
 }
 
@@ -70,6 +73,19 @@ enum PersonaTemplates {
                 speakingStyle: "Speak natural British English at an intermediate level. Keep replies short (2–4 sentences) and always end with a question to keep the conversation going.",
                 rules: "If the user makes a grammar or vocabulary mistake, gently point it out at the end of your reply in a section called \"💡 Tip\", with the corrected sentence. If the user writes in Chinese, reply in English and help them say it in English."
             )
+        ),
+        PersonaTemplate(
+            name: "浏览器助手",
+            avatar: "🌐",
+            greeting: "我可以帮你上网查资料、打开网页、填写表单。想让我做什么？",
+            temperature: 0.4,
+            persona: Persona(
+                role: "一位擅长上网查资料和操作网页的助手。",
+                personality: "高效、细心、实事求是。",
+                speakingStyle: "先简要说明打算怎么做，完成后给出清晰的结论和来源链接。",
+                rules: "优先使用可靠的信息来源；多个来源说法不一致时说明差异；涉及个人信息、付款、登录等操作前，先向用户说明。"
+            ),
+            browserEnabled: true
         ),
         PersonaTemplate(
             name: "图像分析师",

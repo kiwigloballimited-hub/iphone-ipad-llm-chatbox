@@ -17,6 +17,11 @@ final class AppStore {
 
     private(set) var generating: Set<UUID> = []
     @ObservationIgnored var maintenanceRunning: Set<UUID> = []
+    /// 每个对话的内置浏览器（不保存到磁盘）
+    var browserSessions: [UUID: BrowserSession] = [:]
+    /// 等待用户确认的操作说明（按对话）
+    var pendingConfirmations: [UUID: String] = [:]
+    @ObservationIgnored var confirmationContinuations: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
@@ -187,6 +192,7 @@ final class AppStore {
             deleteFiles(of: conversation.messages)
         }
         conversations.removeAll { $0.id == id }
+        browserSessions[id] = nil
         save()
     }
 
@@ -268,6 +274,7 @@ final class AppStore {
 
     func stopGeneration(_ conversationID: UUID) {
         tasks[conversationID]?.cancel()
+        resolveConfirmation(conversationID, approved: false)
     }
 
     private func generateReply(in conversationID: UUID) {
@@ -294,6 +301,21 @@ final class AppStore {
         let options = GenerationOptions(model: model, temperature: agent.temperature, maxTokens: agent.maxTokens, thinking: agent.thinking, penalties: agent.penalties)
         generating.insert(conversationID)
 
+        if agent.browserEnabled {
+            // 浏览器助手：工具调用循环
+            tasks[conversationID] = Task { [weak self] in
+                await self?.runAgentReply(
+                    conversationID: conversationID,
+                    replyID: replyID,
+                    client: client,
+                    options: options,
+                    requestMessages: requestMessages
+                )
+                self?.finishGeneration(conversationID, replyID: replyID)
+            }
+            return
+        }
+
         tasks[conversationID] = Task { [weak self] in
             do {
                 for try await event in client.streamChat(messages: requestMessages, options: options) {
@@ -309,7 +331,7 @@ final class AppStore {
         }
     }
 
-    private func apply(_ event: StreamEvent, to messageID: UUID, in conversationID: UUID) {
+    func apply(_ event: StreamEvent, to messageID: UUID, in conversationID: UUID) {
         guard let ci = conversationIndex(conversationID),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID }) else { return }
         switch event {
@@ -318,7 +340,7 @@ final class AppStore {
         }
     }
 
-    private func markFailed(_ messageID: UUID, in conversationID: UUID, error: String) {
+    func markFailed(_ messageID: UUID, in conversationID: UUID, error: String) {
         guard let ci = conversationIndex(conversationID),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID }) else { return }
         conversations[ci].messages[mi].isError = true

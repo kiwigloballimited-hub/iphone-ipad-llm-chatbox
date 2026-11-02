@@ -29,6 +29,14 @@
 - 内置模板：通用助手、写作伙伴、小老师、英语陪练、图像分析师。
 - 可以预览由人格设定生成的系统提示词。
 
+### 3. 浏览器助手（AI 操作网页）
+- 在助手设置中打开「允许使用浏览器」，或用「浏览器助手」模板新建。
+- AI 可以：搜索、打开网址、阅读网页（长页面分段读）、点击、输入文字 / 选择下拉框、滚动、返回。
+- 浏览器显示在聊天旁边（iPad）或上方（iPhone，可折叠），你可以看到 AI 的每一步，也可以自己直接操作。
+- 登录、付款、提交表单、发送等操作会弹窗请你确认；网页里的文字被当作数据，不会被当作指令执行。
+- 需要支持工具调用（function calling）的模型：Qwen3、DeepSeek、Claude、gpt-oss、Llama 3.1+ 等。
+- 使用 Ollama 时，网页内容较长，建议把上下文长度调大（例如在 Ollama 设置中把 Context length 设为 16K 以上）。
+
 ### 其他
 - 流式输出、随时停止、重新生成、复制 / 选择文本
 - 支持推理模型（DeepSeek-R1、QwQ、Qwen3 等）的「思考过程」折叠显示
@@ -43,6 +51,8 @@
 | LM Studio | OpenAI 兼容 | `http://192.168.1.10:1234` |
 | llama.cpp server | OpenAI 兼容 | `http://192.168.1.10:8080` |
 | vLLM / 其它 OpenAI 兼容服务 | OpenAI 兼容 | `http://192.168.1.10:8000` |
+| DeepSeek（云端） | OpenAI 兼容 | `https://api.deepseek.com`（需要 API Key） |
+| Anthropic Claude（云端） | Anthropic | `https://api.anthropic.com`（需要 API Key） |
 
 地址填到端口即可（填写带 `/v1` 的地址也可以）。
 

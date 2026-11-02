@@ -28,20 +28,62 @@ struct ChatView: View {
     @State private var memoryCandidates: MemoryCandidateBatch?
     @State private var showMemoryBook = false
     @State private var showSummary = false
+    @State private var showBrowser = false
     @FocusState private var inputFocused: Bool
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         if let conversation = store.conversation(id: conversationID) {
             let agent = store.agent(id: conversation.agentID)
             let generating = store.isGenerating(conversationID)
 
-            VStack(spacing: 0) {
-                messageList(conversation: conversation, agent: agent, generating: generating)
-                inputBar(generating: generating)
+            let browser = store.browserSessions[conversationID]
+
+            layout(browser: browser) {
+                VStack(spacing: 0) {
+                    messageList(conversation: conversation, agent: agent, generating: generating)
+                    inputBar(generating: generating)
+                }
             }
             .navigationTitle(conversation.title)
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: browser != nil) { _, hasBrowser in
+                // AI 开始使用浏览器时自动展开
+                if hasBrowser { withAnimation { showBrowser = true } }
+            }
+            .alert(
+                "需要你的确认",
+                isPresented: Binding(
+                    get: { store.pendingConfirmations[conversationID] != nil },
+                    set: { presented in
+                        if !presented && store.pendingConfirmations[conversationID] != nil {
+                            store.resolveConfirmation(conversationID, approved: false)
+                        }
+                    }
+                )
+            ) {
+                Button("拒绝", role: .cancel) { store.resolveConfirmation(conversationID, approved: false) }
+                Button("允许") { store.resolveConfirmation(conversationID, approved: true) }
+            } message: {
+                Text(store.pendingConfirmations[conversationID] ?? "")
+            }
             .toolbar {
+                if agent?.browserEnabled == true || browser != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            if browser == nil {
+                                let session = store.browser(for: conversationID)
+                                if session.currentURL.isEmpty, let url = URL(string: "https://www.bing.com") {
+                                    Task { await session.load(url) }
+                                }
+                            }
+                            withAnimation { showBrowser.toggle() }
+                        } label: {
+                            Image(systemName: showBrowser ? "globe.badge.chevron.backward" : "globe")
+                        }
+                        .accessibilityLabel(showBrowser ? "收起浏览器" : "显示浏览器")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         if let agent {
@@ -147,6 +189,35 @@ struct ChatView: View {
             }
         } else {
             ContentUnavailableView("对话不存在", systemImage: "bubble.left")
+        }
+    }
+
+    // MARK: - Layout
+
+    /// iPad 横向宽屏：聊天和浏览器左右并排；iPhone：浏览器在聊天上方，可折叠
+    @ViewBuilder
+    private func layout<Chat: View>(browser: BrowserSession?, @ViewBuilder chat: () -> Chat) -> some View {
+        if let browser, showBrowser, sizeClass == .regular {
+            HStack(spacing: 0) {
+                chat()
+                    .frame(maxWidth: .infinity)
+                Divider()
+                BrowserPanel(session: browser) { withAnimation { showBrowser = false } }
+                    .frame(maxWidth: .infinity)
+            }
+        } else {
+            VStack(spacing: 0) {
+                if let browser {
+                    if showBrowser {
+                        BrowserPanel(session: browser) { withAnimation { showBrowser = false } }
+                            .frame(height: 320)
+                    } else {
+                        BrowserStatusBar(session: browser) { withAnimation { showBrowser = true } }
+                    }
+                    Divider()
+                }
+                chat()
+            }
         }
     }
 

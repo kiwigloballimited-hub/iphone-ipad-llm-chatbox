@@ -27,6 +27,7 @@ struct AgentEditorView: View {
                 thinkingSection
                 personaSection
                 memorySection
+                toolsSection
                 greetingSection
                 parameterSection
                 penaltySection
@@ -185,6 +186,18 @@ struct AgentEditorView: View {
             Text("记忆")
         } footer: {
             Text("长期记忆：记忆本里的内容会带入这个助手的所有对话（跨会话）。开启「自动记住」后，每聊几轮会自动提取新信息加入记忆本；也可以在聊天界面右上角菜单里手动「记住这次对话」。\n长对话自动摘要：同一个对话超过「记忆的历史消息」条数后，早期内容会被压缩成摘要继续保留，而不是直接遗忘。\n以上整理工作会使用同一个模型在后台进行。")
+        }
+    }
+
+    private var toolsSection: some View {
+        Section {
+            Toggle(isOn: $agent.browserEnabled) {
+                Label("允许使用浏览器", systemImage: "globe")
+            }
+        } header: {
+            Text("工具")
+        } footer: {
+            Text("开启后，助手可以搜索、打开网页、阅读内容、点击和输入。需要支持工具调用（function calling）的模型，例如 Qwen3、DeepSeek、Claude、gpt-oss、Llama 3.1+。登录、付款、提交表单等操作会先请求你的确认。")
         }
     }
 

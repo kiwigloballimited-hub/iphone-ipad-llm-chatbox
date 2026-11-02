@@ -5,6 +5,7 @@ import Foundation
 enum APIType: String, Codable, CaseIterable, Identifiable {
     case openAI
     case ollama
+    case anthropic
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum APIType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return "OpenAI 兼容接口"
         case .ollama: return "Ollama 原生接口"
+        case .anthropic: return "Anthropic（Claude）"
         }
     }
 
@@ -21,6 +23,8 @@ enum APIType: String, Codable, CaseIterable, Identifiable {
             return "适用于 LM Studio、llama.cpp、vLLM、Ollama（/v1）等。地址示例：http://192.168.1.10:1234"
         case .ollama:
             return "直接使用 Ollama 的 /api/chat。地址示例：http://192.168.1.10:11434"
+        case .anthropic:
+            return "Claude 官方 API。地址：https://api.anthropic.com，需要填写 API Key。"
         }
     }
 }
@@ -101,6 +105,8 @@ struct Agent: Codable, Identifiable, Hashable {
     var rollingSummarySetting: Bool?
     /// 重复惩罚（nil = 使用服务器 / 模型默认值）
     var penalties: PenaltySettings?
+    /// 是否允许使用内置浏览器（工具调用）（nil = 关闭）
+    var browserEnabledSetting: Bool?
 
     var systemPrompt: String { persona.systemPrompt(agentName: name) }
 
@@ -122,6 +128,11 @@ struct Agent: Codable, Identifiable, Hashable {
     var rollingSummary: Bool {
         get { rollingSummarySetting ?? true }
         set { rollingSummarySetting = newValue }
+    }
+
+    var browserEnabled: Bool {
+        get { browserEnabledSetting ?? false }
+        set { browserEnabledSetting = newValue }
     }
 
     /// 编辑界面使用：开启自定义后读写具体数值
@@ -229,6 +240,20 @@ struct ChatMessage: Codable, Identifiable, Hashable {
     var createdAt = Date()
     var isError: Bool = false
     var modelName: String?
+    /// 工具调用步骤（浏览器操作等）
+    var steps: [AgentStep]?
+}
+
+/// 助手执行的一个工具步骤，显示在消息气泡里
+struct AgentStep: Codable, Identifiable, Hashable {
+    enum Status: String, Codable {
+        case running, done, failed, denied
+    }
+
+    var id = UUID()
+    var icon: String
+    var title: String
+    var status: Status = .running
 }
 
 struct Conversation: Codable, Identifiable, Hashable {
@@ -291,6 +316,40 @@ struct MediaSettings: Codable, Hashable {
     // 上下文
     /// 是否在历史消息中重复发送图片（关闭可大幅减少请求体积）
     var sendHistoryImages: Bool = false
+
+    // 浏览器
+    var searchEngineSetting: SearchEngine?
+    var searchEngine: SearchEngine {
+        get { searchEngineSetting ?? .bing }
+        set { searchEngineSetting = newValue }
+    }
+}
+
+enum SearchEngine: String, Codable, CaseIterable, Identifiable {
+    case bing, google, duckDuckGo, baidu
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .bing: return "必应 Bing"
+        case .google: return "Google"
+        case .duckDuckGo: return "DuckDuckGo"
+        case .baidu: return "百度"
+        }
+    }
+
+    func searchURL(_ query: String) -> URL? {
+        var components: URLComponents?
+        switch self {
+        case .bing: components = URLComponents(string: "https://www.bing.com/search")
+        case .google: components = URLComponents(string: "https://www.google.com/search")
+        case .duckDuckGo: components = URLComponents(string: "https://html.duckduckgo.com/html/")
+        case .baidu: components = URLComponents(string: "https://www.baidu.com/s")
+        }
+        components?.queryItems = [URLQueryItem(name: self == .baidu ? "wd" : "q", value: query)]
+        return components?.url
+    }
 }
 
 // MARK: - Persistence container

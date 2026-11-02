@@ -31,6 +31,10 @@ struct MessageBubble: View {
                     AttachmentGrid(attachments: message.attachments, alignTrailing: isUser) { previewAttachment = $0 }
                 }
 
+                if let steps = message.steps, !steps.isEmpty {
+                    AgentStepsView(steps: steps)
+                }
+
                 if !thinking.isEmpty {
                     DisclosureGroup(isExpanded: $showThinking) {
                         Text(thinking)
@@ -109,6 +113,57 @@ struct MessageBubble: View {
     static func markdown(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+}
+
+/// 工具调用步骤（浏览器操作）列表，步骤多时可折叠
+private struct AgentStepsView: View {
+    let steps: [AgentStep]
+    @State private var expanded = false
+
+    var body: some View {
+        let visible = expanded || steps.count <= 4 ? steps : Array(steps.suffix(3))
+        VStack(alignment: .leading, spacing: 6) {
+            if steps.count > 4 {
+                Button {
+                    withAnimation { expanded.toggle() }
+                } label: {
+                    Label(expanded ? "收起步骤" : "共 \(steps.count) 个步骤，显示全部", systemImage: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+            }
+            ForEach(visible) { step in
+                HStack(spacing: 8) {
+                    Image(systemName: step.icon)
+                        .frame(width: 16)
+                        .foregroundStyle(.secondary)
+                    Text(step.title)
+                        .lineLimit(2)
+                    Spacer(minLength: 4)
+                    statusIcon(step.status)
+                }
+                .font(.footnote)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: 360, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.tertiarySystemFill)))
+    }
+
+    @ViewBuilder
+    private func statusIcon(_ status: AgentStep.Status) -> some View {
+        switch status {
+        case .running:
+            ProgressView().controlSize(.mini)
+        case .done:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+        case .denied:
+            Image(systemName: "hand.raised.fill").foregroundStyle(.red)
+        }
     }
 }
 

@@ -32,7 +32,15 @@ enum LLMError: LocalizedError {
             return "服务器地址无效：\(url)"
         case .http(let code, let body):
             let detail = LLMError.extractMessage(from: body) ?? body
-            return "服务器返回错误 \(code)：\(detail.prefix(500))"
+            var hint = ""
+            switch code {
+            case 401, 403: hint = "\n\n提示：API Key 无效或没有权限，请在服务器设置中检查 API Key。"
+            case 402: hint = "\n\n提示：账户余额不足。"
+            case 429: hint = "\n\n提示：请求太频繁或额度已用完，请稍后再试。"
+            case 529: hint = "\n\n提示：服务器繁忙，请稍后再试。"
+            default: break
+            }
+            return "服务器返回错误 \(code)：\(detail.prefix(500))" + hint
         case .server(let message):
             return "服务器错误：\(message)"
         case .badResponse:
@@ -85,27 +93,40 @@ struct LLMClient {
         return base
     }
 
-    private func openAIURL(_ path: String) throws -> URL {
+    func openAIURL(_ path: String) throws -> URL {
         var base = normalizedBase
         if !base.hasSuffix("/v1") { base += "/v1" }
         guard let url = URL(string: base + path) else { throw LLMError.invalidURL(server.baseURL) }
         return url
     }
 
-    private func ollamaURL(_ path: String) throws -> URL {
+    func ollamaURL(_ path: String) throws -> URL {
         var base = normalizedBase
         if base.hasSuffix("/v1") { base.removeLast(3) }
         guard let url = URL(string: base + path) else { throw LLMError.invalidURL(server.baseURL) }
         return url
     }
 
-    private func makeRequest(url: URL, method: String, body: Data? = nil, timeout: TimeInterval = 600) -> URLRequest {
+    func anthropicURL(_ path: String) throws -> URL {
+        var base = normalizedBase
+        if base.hasSuffix("/v1") { base.removeLast(3) }
+        guard let url = URL(string: base + "/v1" + path) else { throw LLMError.invalidURL(server.baseURL) }
+        return url
+    }
+
+    func makeRequest(url: URL, method: String, body: Data? = nil, timeout: TimeInterval = 600, extraHeaders: [String: String] = [:]) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !server.apiKey.isBlank {
+        if server.apiType == .anthropic {
+            request.setValue(server.apiKey.trimmed, forHTTPHeaderField: "x-api-key")
+            request.setValue(Self.anthropicVersion, forHTTPHeaderField: "anthropic-version")
+        } else if !server.apiKey.isBlank {
             request.setValue("Bearer \(server.apiKey.trimmed)", forHTTPHeaderField: "Authorization")
+        }
+        for (field, value) in extraHeaders {
+            request.setValue(value, forHTTPHeaderField: field)
         }
         request.httpBody = body
         return request
@@ -124,6 +145,15 @@ struct LLMClient {
                 let data: [Model]
             }
             return try JSONDecoder().decode(Response.self, from: data).data.map(\.id).sorted()
+        case .anthropic:
+            let request = makeRequest(url: try anthropicURL("/models?limit=100"), method: "GET", timeout: 15)
+            let (data, response) = try await session.data(for: request)
+            try check(response, data)
+            struct Response: Decodable {
+                struct Model: Decodable { let id: String }
+                let data: [Model]
+            }
+            return try JSONDecoder().decode(Response.self, from: data).data.map(\.id)
         case .ollama:
             let request = makeRequest(url: try ollamaURL("/api/tags"), method: "GET", timeout: 15)
             let (data, response) = try await session.data(for: request)
@@ -146,7 +176,10 @@ struct LLMClient {
     // MARK: Chat (streaming)
 
     func streamChat(messages: [RequestMessage], options: GenerationOptions) -> AsyncThrowingStream<StreamEvent, Error> {
-        AsyncThrowingStream { continuation in
+        if server.apiType == .anthropic {
+            return streamChatViaTurns(messages: messages, options: options)
+        }
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     var request = try buildChatRequest(messages: messages, options: options, compatibilityMode: false)
@@ -176,6 +209,33 @@ struct LLMClient {
                         let (events, done) = try parse(line: line)
                         for event in events { continuation.yield(event) }
                         if done { break }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Anthropic：普通聊天也走统一的 streamTurn（不带工具）
+    private func streamChatViaTurns(messages: [RequestMessage], options: GenerationOptions) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let entries = messages.map { $0.role == .system ? AgentEntry.system($0.text) : AgentEntry.message($0) }
+                    for try await event in streamTurn(entries: entries, tools: [], options: options) {
+                        switch event {
+                        case .content(let text):
+                            continuation.yield(.content(text))
+                        case .reasoning(let text):
+                            continuation.yield(.reasoning(text))
+                        case .finished(let turn):
+                            if turn.stopReason == "refusal" {
+                                continuation.yield(.content(turn.text.isEmpty ? "（Claude 拒绝回答这个请求。）" : "\n\n（回答被中止：Claude 拒绝继续。）"))
+                            }
+                        }
                     }
                     continuation.finish()
                 } catch {
@@ -266,6 +326,15 @@ struct LLMClient {
             if !compatibilityMode, let think = Self.ollamaThinkValue(options.thinking, model: options.model) {
                 body["think"] = think
             }
+
+        case .anthropic:
+            // Anthropic 由 streamChatViaTurns 处理
+            return try buildTurnRequest(
+                entries: messages.map { $0.role == .system ? AgentEntry.system($0.text) : AgentEntry.message($0) },
+                tools: [],
+                options: options,
+                compatibilityMode: compatibilityMode
+            )
         }
 
         let data = try JSONSerialization.data(withJSONObject: body)

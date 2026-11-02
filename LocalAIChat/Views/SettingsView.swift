@@ -6,6 +6,7 @@ struct SettingsView: View {
 
     @State private var editingServer: ServerConfig?
     @State private var showDeleteAll = false
+    @State private var showClearBrowser = false
 
     var body: some View {
         @Bindable var store = store
@@ -103,6 +104,21 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("搜索引擎", selection: $store.media.searchEngine) {
+                        ForEach(SearchEngine.allCases) { engine in
+                            Text(engine.displayName).tag(engine)
+                        }
+                    }
+                    Button("清除浏览器数据（Cookie、登录状态）", role: .destructive) {
+                        showClearBrowser = true
+                    }
+                } header: {
+                    Text("浏览器")
+                } footer: {
+                    Text("内置浏览器的登录状态会保留，下次 AI 访问同一网站时仍然是登录状态。")
+                }
+
+                Section {
                     Toggle("历史消息中重复发送图片", isOn: $store.media.sendHistoryImages)
                 } header: {
                     Text("上下文")
@@ -132,6 +148,11 @@ struct SettingsView: View {
             .sheet(item: $editingServer) { server in
                 ServerEditorView(server: server)
             }
+            .confirmationDialog("清除内置浏览器的所有 Cookie 和网站数据？已登录的网站需要重新登录。", isPresented: $showClearBrowser, titleVisibility: .visible) {
+                Button("清除", role: .destructive) {
+                    Task { await BrowserSession.clearAllData() }
+                }
+            }
             .confirmationDialog("删除所有助手的全部对话？此操作无法撤销。", isPresented: $showDeleteAll, titleVisibility: .visible) {
                 Button("全部删除", role: .destructive) { store.deleteAllConversations() }
             }
@@ -146,6 +167,20 @@ struct ServerEditorView: View {
     @State private var server: ServerConfig
     @State private var testState: TestState = .idle
     @State private var models: [String] = []
+
+    struct Preset {
+        let name: String
+        let url: String
+        let type: APIType
+        let model: String
+    }
+
+    static let presets: [Preset] = [
+        Preset(name: "Ollama（本地）", url: "http://192.168.1.100:11434", type: .ollama, model: ""),
+        Preset(name: "LM Studio（本地）", url: "http://192.168.1.100:1234", type: .openAI, model: ""),
+        Preset(name: "DeepSeek", url: "https://api.deepseek.com", type: .openAI, model: "deepseek-chat"),
+        Preset(name: "Anthropic Claude", url: "https://api.anthropic.com", type: .anthropic, model: "claude-opus-5-5"),
+    ]
 
     enum TestState: Equatable {
         case idle
@@ -180,7 +215,24 @@ struct ServerEditorView: View {
                 }
 
                 Section {
-                    SecureField("API Key（本地服务一般不需要）", text: $server.apiKey)
+                    Menu {
+                        ForEach(Self.presets, id: \.name) { preset in
+                            Button(preset.name) {
+                                server.name = preset.name
+                                server.baseURL = preset.url
+                                server.apiType = preset.type
+                                server.defaultModel = preset.model
+                                testState = .idle
+                                models = []
+                            }
+                        }
+                    } label: {
+                        Label("快速填写常用服务", systemImage: "wand.and.stars")
+                    }
+                }
+
+                Section {
+                    SecureField(server.apiType == .anthropic || server.baseURL.contains("deepseek") ? "API Key（必填）" : "API Key（本地服务一般不需要）", text: $server.apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } header: {
