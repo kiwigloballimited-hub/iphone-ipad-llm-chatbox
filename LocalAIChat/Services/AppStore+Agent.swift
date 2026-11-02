@@ -53,22 +53,38 @@ extension AppStore {
 
         do {
             for step in 0..<Self.maxAgentSteps {
-                var needsSeparator = step > 0
                 var finished: AssistantTurn?
                 let requestEntries = compactOldResults ? Self.compacted(entries) : entries
+                // 断线时只重做这一轮：先记下这一轮开始前的内容，重试前恢复
+                let saved = savedText(replyID, in: conversationID)
+                var attempt = 0
 
-                for try await event in client.streamTurn(entries: requestEntries, tools: BrowserTools.specs, options: options) {
-                    switch event {
-                    case .content(let text):
-                        if needsSeparator {
-                            appendSeparator(to: replyID, in: conversationID)
-                            needsSeparator = false
+                while true {
+                    var needsSeparator = step > 0
+                    do {
+                        for try await event in client.streamTurn(entries: requestEntries, tools: BrowserTools.specs, options: options) {
+                            if retryStatus[conversationID] != nil { retryStatus[conversationID] = nil }
+                            switch event {
+                            case .content(let text):
+                                if needsSeparator {
+                                    appendSeparator(to: replyID, in: conversationID)
+                                    needsSeparator = false
+                                }
+                                apply(.content(text), to: replyID, in: conversationID)
+                            case .reasoning(let text):
+                                apply(.reasoning(text), to: replyID, in: conversationID)
+                            case .finished(let turn):
+                                finished = turn
+                            }
                         }
-                        apply(.content(text), to: replyID, in: conversationID)
-                    case .reasoning(let text):
-                        apply(.reasoning(text), to: replyID, in: conversationID)
-                    case .finished(let turn):
-                        finished = turn
+                        break
+                    } catch {
+                        if RetryPolicy.isCancellation(error) { throw error }
+                        guard await waitBeforeRetry(after: error, attempt: &attempt, conversationID: conversationID) else {
+                            throw error
+                        }
+                        restoreText(saved, to: replyID, in: conversationID)
+                        finished = nil
                     }
                 }
 
@@ -139,6 +155,17 @@ extension AppStore {
         guard let ci = conversationIndex(conversationID),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID }) else { return nil }
         return (ci, mi)
+    }
+
+    private func savedText(_ messageID: UUID, in conversationID: UUID) -> (content: String, reasoning: String) {
+        guard case let (ci, mi)? = messageIndices(messageID, conversationID) else { return ("", "") }
+        return (conversations[ci].messages[mi].content, conversations[ci].messages[mi].reasoning)
+    }
+
+    private func restoreText(_ saved: (content: String, reasoning: String), to messageID: UUID, in conversationID: UUID) {
+        guard case let (ci, mi)? = messageIndices(messageID, conversationID) else { return }
+        conversations[ci].messages[mi].content = saved.content
+        conversations[ci].messages[mi].reasoning = saved.reasoning
     }
 
     private func appendSeparator(to messageID: UUID, in conversationID: UUID) {

@@ -242,6 +242,8 @@ struct ChatMessage: Codable, Identifiable, Hashable {
     var modelName: String?
     /// 工具调用步骤（浏览器操作等）
     var steps: [AgentStep]?
+    /// 生成失败的原因（content 保留已生成的部分，便于从断点继续）
+    var errorText: String?
 }
 
 /// 助手执行的一个工具步骤，显示在消息气泡里
@@ -274,6 +276,9 @@ struct Conversation: Codable, Identifiable, Hashable {
 
     var preview: String {
         guard let last = messages.last(where: { $0.role != .system }) else { return "暂无消息" }
+        if last.isError, let errorText = last.errorText, ThinkParser.split(last.content).answer.isBlank {
+            return "⚠️ " + errorText
+        }
         let text = ThinkParser.split(last.content).answer.trimmed
         if !text.isEmpty { return text }
         if !last.attachments.isEmpty { return "[\(last.attachments.count) 张图片]" }
@@ -316,6 +321,18 @@ struct MediaSettings: Codable, Hashable {
     // 上下文
     /// 是否在历史消息中重复发送图片（关闭可大幅减少请求体积）
     var sendHistoryImages: Bool = false
+
+    // 网络：断线自动重试
+    var autoRetrySetting: Bool?
+    var retryLimitSetting: Int?
+    var autoRetry: Bool {
+        get { autoRetrySetting ?? true }
+        set { autoRetrySetting = newValue }
+    }
+    var retryLimit: Int {
+        get { retryLimitSetting ?? 3 }
+        set { retryLimitSetting = newValue }
+    }
 
     // 浏览器
     var searchEngineSetting: SearchEngine?

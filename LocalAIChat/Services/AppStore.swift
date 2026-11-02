@@ -19,6 +19,8 @@ final class AppStore {
     @ObservationIgnored var maintenanceRunning: Set<UUID> = []
     /// 每个对话的内置浏览器（不保存到磁盘）
     var browserSessions: [UUID: BrowserSession] = [:]
+    /// 断线重试状态（按对话显示）
+    var retryStatus: [UUID: String] = [:]
     /// 等待用户确认的操作说明（按对话）
     var pendingConfirmations: [UUID: String] = [:]
     @ObservationIgnored var confirmationContinuations: [UUID: CheckedContinuation<Bool, Never>] = [:]
@@ -272,12 +274,26 @@ final class AppStore {
         generateReply(in: conversationID)
     }
 
+    /// 从断点继续生成（上一条回复因网络中断而失败时）
+    func continueReply(in conversationID: UUID) {
+        guard !isGenerating(conversationID),
+              let ci = conversationIndex(conversationID),
+              let last = conversations[ci].messages.last,
+              last.role == .assistant, last.isError, last.errorText != nil,
+              !ThinkParser.split(last.content).answer.isBlank,
+              let agent = agent(id: conversations[ci].agentID), !agent.browserEnabled else {
+            regenerate(in: conversationID)
+            return
+        }
+        generateReply(in: conversationID, continuing: last.id)
+    }
+
     func stopGeneration(_ conversationID: UUID) {
         tasks[conversationID]?.cancel()
         resolveConfirmation(conversationID, approved: false)
     }
 
-    private func generateReply(in conversationID: UUID) {
+    private func generateReply(in conversationID: UUID, continuing continueID: UUID? = nil) {
         guard tasks[conversationID] == nil,
               let ci = conversationIndex(conversationID),
               let agent = agent(id: conversations[ci].agentID) else { return }
@@ -292,10 +308,22 @@ final class AppStore {
             return
         }
 
+        // 注意：要在清除失败标记之前组装，失败的消息不会进入历史
         let requestMessages = buildRequestMessages(conversation: conversations[ci], agent: agent)
-        let reply = ChatMessage(role: .assistant, content: "", modelName: model)
-        conversations[ci].messages.append(reply)
-        let replyID = reply.id
+        var initialMessages = requestMessages
+        let replyID: UUID
+        if let continueID, let mi = conversations[ci].messages.firstIndex(where: { $0.id == continueID }) {
+            // 从断点继续：沿用原来的消息，请模型接着写
+            let partial = ThinkParser.split(conversations[ci].messages[mi].content).answer
+            conversations[ci].messages[mi].isError = false
+            conversations[ci].messages[mi].errorText = nil
+            initialMessages = RetryPolicy.continuation(base: requestMessages, partial: partial)
+            replyID = continueID
+        } else {
+            let reply = ChatMessage(role: .assistant, content: "", modelName: model)
+            conversations[ci].messages.append(reply)
+            replyID = reply.id
+        }
 
         let client = LLMClient(server: server)
         let options = GenerationOptions(model: model, temperature: agent.temperature, maxTokens: agent.maxTokens, thinking: agent.thinking, penalties: agent.penalties)
@@ -304,6 +332,7 @@ final class AppStore {
         if agent.browserEnabled {
             // 浏览器助手：工具调用循环
             tasks[conversationID] = Task { [weak self] in
+                let activity = BackgroundActivity.begin("浏览器助手")
                 await self?.runAgentReply(
                     conversationID: conversationID,
                     replyID: replyID,
@@ -312,23 +341,93 @@ final class AppStore {
                     requestMessages: requestMessages
                 )
                 self?.finishGeneration(conversationID, replyID: replyID)
+                activity.end()
             }
             return
         }
 
         tasks[conversationID] = Task { [weak self] in
-            do {
-                for try await event in client.streamChat(messages: requestMessages, options: options) {
-                    self?.apply(event, to: replyID, in: conversationID)
-                }
-            } catch {
-                let cancelled = Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled
-                if !cancelled {
-                    self?.markFailed(replyID, in: conversationID, error: LLMError.friendlyDescription(error))
-                }
-            }
+            let activity = BackgroundActivity.begin("生成回复")
+            await self?.streamWithRetry(
+                conversationID: conversationID,
+                replyID: replyID,
+                client: client,
+                options: options,
+                baseMessages: requestMessages,
+                initialMessages: initialMessages
+            )
             self?.finishGeneration(conversationID, replyID: replyID)
+            activity.end()
         }
+    }
+
+    /// 流式生成；遇到网络中断等临时错误时自动重试，已生成的部分从断点续写
+    private func streamWithRetry(
+        conversationID: UUID,
+        replyID: UUID,
+        client: LLMClient,
+        options: GenerationOptions,
+        baseMessages: [RequestMessage],
+        initialMessages: [RequestMessage]
+    ) async {
+        var messages = initialMessages
+        var attempt = 0
+        while true {
+            do {
+                for try await event in client.streamChat(messages: messages, options: options) {
+                    if retryStatus[conversationID] != nil { retryStatus[conversationID] = nil }
+                    apply(event, to: replyID, in: conversationID)
+                }
+                retryStatus[conversationID] = nil
+                return
+            } catch {
+                if RetryPolicy.isCancellation(error) {
+                    retryStatus[conversationID] = nil
+                    return
+                }
+                guard await waitBeforeRetry(after: error, attempt: &attempt, conversationID: conversationID) else {
+                    markFailed(replyID, in: conversationID, error: LLMError.friendlyDescription(error))
+                    return
+                }
+                messages = prepareRetry(replyID: replyID, conversationID: conversationID, base: baseMessages)
+            }
+        }
+    }
+
+    /// 判断是否应该重试；需要时显示状态并等待。返回 false 表示不再重试。
+    func waitBeforeRetry(after error: Error, attempt: inout Int, conversationID: UUID) async -> Bool {
+        guard media.autoRetry, attempt < media.retryLimit, RetryPolicy.isTransient(error) else {
+            retryStatus[conversationID] = nil
+            return false
+        }
+        attempt += 1
+        let seconds = RetryPolicy.delaySeconds(forAttempt: attempt)
+        retryStatus[conversationID] = "连接中断，\(seconds) 秒后重试（第 \(attempt)/\(media.retryLimit) 次）…"
+        do {
+            try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+        } catch {
+            retryStatus[conversationID] = nil
+            return false
+        }
+        if Task.isCancelled {
+            retryStatus[conversationID] = nil
+            return false
+        }
+        retryStatus[conversationID] = "正在重新连接…"
+        return true
+    }
+
+    /// 重试前整理消息：还没有正文就从头生成；已有正文则从断点续写
+    private func prepareRetry(replyID: UUID, conversationID: UUID, base: [RequestMessage]) -> [RequestMessage] {
+        guard let ci = conversationIndex(conversationID),
+              let mi = conversations[ci].messages.firstIndex(where: { $0.id == replyID }) else { return base }
+        let answer = ThinkParser.split(conversations[ci].messages[mi].content).answer
+        if answer.isBlank {
+            conversations[ci].messages[mi].content = ""
+            conversations[ci].messages[mi].reasoning = ""
+            return base
+        }
+        return RetryPolicy.continuation(base: base, partial: answer)
     }
 
     func apply(_ event: StreamEvent, to messageID: UUID, in conversationID: UUID) {
@@ -343,14 +442,15 @@ final class AppStore {
     func markFailed(_ messageID: UUID, in conversationID: UUID, error: String) {
         guard let ci = conversationIndex(conversationID),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID }) else { return }
+        // 保留已生成的内容，错误原因单独保存，便于「从断点继续」
         conversations[ci].messages[mi].isError = true
-        let existing = conversations[ci].messages[mi].content
-        conversations[ci].messages[mi].content = existing.isBlank ? error : existing + "\n\n⚠️ " + error
+        conversations[ci].messages[mi].errorText = error
     }
 
     private func finishGeneration(_ conversationID: UUID, replyID: UUID) {
         tasks[conversationID] = nil
         generating.remove(conversationID)
+        retryStatus[conversationID] = nil
         if let ci = conversationIndex(conversationID),
            let mi = conversations[ci].messages.firstIndex(where: { $0.id == replyID }) {
             let message = conversations[ci].messages[mi]

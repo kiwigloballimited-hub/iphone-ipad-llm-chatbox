@@ -13,6 +13,8 @@ struct MessageBubble: View {
     @State private var showSelectableText = false
 
     private var isUser: Bool { message.role == .user }
+    /// 旧版本保存的错误消息（错误文字直接写在内容里）
+    private var isLegacyError: Bool { message.isError && message.errorText == nil }
 
     var body: some View {
         let parsed = ThinkParser.split(message.content)
@@ -54,7 +56,7 @@ struct MessageBubble: View {
                 if !answer.isEmpty {
                     Text(Self.markdown(answer))
                         .font(.body)
-                        .foregroundStyle(isUser ? Color.white : (message.isError ? Color.red : Color.primary))
+                        .foregroundStyle(isUser ? Color.white : (isLegacyError ? Color.red : Color.primary))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(bubbleBackground)
@@ -64,6 +66,16 @@ struct MessageBubble: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
                         .background(bubbleBackground)
+                }
+
+                if let errorText = message.errorText, message.isError, !isStreaming {
+                    FailureBox(
+                        errorText: errorText,
+                        showActions: isLast,
+                        canContinue: !answer.isBlank && agent?.browserEnabled != true,
+                        onRetry: { store.regenerate(in: conversationID) },
+                        onContinue: { store.continueReply(in: conversationID) }
+                    )
                 }
 
                 if !isUser, let model = message.modelName, !isStreaming, !answer.isEmpty {
@@ -87,7 +99,7 @@ struct MessageBubble: View {
 
     private var bubbleBackground: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(isUser ? Color.accentColor : (message.isError ? Color.red.opacity(0.1) : Color(.secondarySystemBackground)))
+            .fill(isUser ? Color.accentColor : (isLegacyError ? Color.red.opacity(0.1) : Color(.secondarySystemBackground)))
     }
 
     @ViewBuilder
@@ -113,6 +125,47 @@ struct MessageBubble: View {
     static func markdown(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+}
+
+/// 生成失败时显示的错误和操作按钮
+private struct FailureBox: View {
+    let errorText: String
+    let showActions: Bool
+    let canContinue: Bool
+    let onRetry: () -> Void
+    let onContinue: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text(errorText)
+                    .font(.footnote)
+            } icon: {
+                Image(systemName: "wifi.exclamationmark")
+            }
+            .foregroundStyle(.red)
+
+            if showActions {
+                HStack(spacing: 10) {
+                    if canContinue {
+                        Button(action: onContinue) {
+                            Label("从断点继续", systemImage: "play.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    Button(action: onRetry) {
+                        Label("重新生成", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .font(.footnote)
+                .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 420, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.red.opacity(0.08)))
     }
 }
 

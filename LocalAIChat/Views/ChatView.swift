@@ -290,6 +290,16 @@ struct ChatView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            if let status = store.retryStatus[conversationID] {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Label(status, systemImage: "wifi.exclamationmark")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Spacer()
+                }
+            }
+
             if let status = isExtractingMemory ? "正在从对话中提取记忆…" : store.maintenanceStatus[conversationID] {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)

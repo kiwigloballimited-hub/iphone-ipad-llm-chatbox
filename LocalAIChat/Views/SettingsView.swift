@@ -104,6 +104,17 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("断线自动重试", isOn: $store.media.autoRetry)
+                    if store.media.autoRetry {
+                        Stepper("最多重试 \(store.media.retryLimit) 次", value: $store.media.retryLimit, in: 1...5)
+                    }
+                } header: {
+                    Text("网络")
+                } footer: {
+                    Text("网络中断、服务器繁忙或超时时自动重新连接；如果已经生成了一部分，会从中断处接着写。全部重试失败后，可以在消息下方点「从断点继续」。")
+                }
+
+                Section {
                     Picker("搜索引擎", selection: $store.media.searchEngine) {
                         ForEach(SearchEngine.allCases) { engine in
                             Text(engine.displayName).tag(engine)
