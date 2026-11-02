@@ -23,6 +23,11 @@ struct ChatView: View {
     @State private var activeVideo: VideoSession?
     @State private var errorMessage: String?
     @State private var showClearConfirm = false
+    @State private var infoMessage: String?
+    @State private var isExtractingMemory = false
+    @State private var memoryCandidates: MemoryCandidateBatch?
+    @State private var showMemoryBook = false
+    @State private var showSummary = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -54,6 +59,20 @@ struct ChatView: View {
                                 Label("思考强度：\(agent.thinking.displayName)", systemImage: "brain")
                             }
                             .pickerStyle(.menu)
+                        }
+                        Section("记忆") {
+                            Button("记住这次对话", systemImage: "brain.head.profile") {
+                                Task { await extractMemories() }
+                            }
+                            .disabled(generating || isExtractingMemory)
+                            Button("查看记忆本（\(store.memories(for: conversation.agentID).count)）", systemImage: "book.closed") {
+                                showMemoryBook = true
+                            }
+                            if conversation.summary != nil {
+                                Button("查看早期对话摘要", systemImage: "text.alignleft") {
+                                    showSummary = true
+                                }
+                            }
                         }
                         Button("重新生成最后回复", systemImage: "arrow.clockwise") {
                             store.regenerate(in: conversationID)
@@ -98,6 +117,22 @@ struct ChatView: View {
                 Button("好", role: .cancel) {}
             } message: {
                 Text(errorMessage ?? "")
+            }
+            .sheet(item: $memoryCandidates) { batch in
+                MemoryCandidatesSheet(batch: batch) { texts in
+                    store.acceptMemories(texts, from: conversationID)
+                }
+            }
+            .sheet(isPresented: $showMemoryBook) {
+                MemoryBookSheet(agentID: conversation.agentID)
+            }
+            .sheet(isPresented: $showSummary) {
+                ConversationSummarySheet(conversationID: conversationID)
+            }
+            .alert("提示", isPresented: Binding(get: { infoMessage != nil }, set: { if !$0 { infoMessage = nil } })) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(infoMessage ?? "")
             }
             .confirmationDialog("清空当前对话的所有消息？", isPresented: $showClearConfirm, titleVisibility: .visible) {
                 Button("清空", role: .destructive) { store.clearConversation(conversationID) }
@@ -182,6 +217,16 @@ struct ChatView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let status = isExtractingMemory ? "正在从对话中提取记忆…" : store.maintenanceStatus[conversationID] {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Label(status, systemImage: "brain.head.profile")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
 
             if let processingText {
@@ -322,6 +367,21 @@ struct ChatView: View {
             } catch {
                 errorMessage = "导入失败：\(error.localizedDescription)"
             }
+        }
+    }
+
+    private func extractMemories() async {
+        isExtractingMemory = true
+        defer { isExtractingMemory = false }
+        do {
+            let items = try await store.extractMemoryCandidates(from: conversationID)
+            if items.isEmpty {
+                infoMessage = "这次对话里没有发现需要新记住的信息。"
+            } else {
+                memoryCandidates = MemoryCandidateBatch(texts: items)
+            }
+        } catch {
+            errorMessage = "提取记忆失败：" + LLMError.friendlyDescription(error)
         }
     }
 

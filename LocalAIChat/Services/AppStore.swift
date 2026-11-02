@@ -10,8 +10,13 @@ final class AppStore {
     var agents: [Agent] = []
     var conversations: [Conversation] = []
     var media = MediaSettings()
+    /// 所有助手的长期记忆
+    var memories: [MemoryItem] = []
+    /// 后台整理（摘要 / 记忆）状态，按对话显示
+    var maintenanceStatus: [UUID: String] = [:]
 
     private(set) var generating: Set<UUID> = []
+    @ObservationIgnored var maintenanceRunning: Set<UUID> = []
 
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
@@ -37,6 +42,7 @@ final class AppStore {
             agents = decoded.agents
             conversations = decoded.conversations
             media = decoded.media
+            memories = decoded.memories ?? []
         } catch {
             // 解析失败时保留一份备份，避免数据被覆盖丢失
             let backup = Storage.baseDirectory.appendingPathComponent("data-backup-\(Int(Date().timeIntervalSince1970)).json")
@@ -58,7 +64,7 @@ final class AppStore {
     func saveNow() {
         pendingSave?.cancel()
         pendingSave = nil
-        let snapshot = AppData(servers: servers, agents: agents, conversations: conversations, media: media)
+        let snapshot = AppData(servers: servers, agents: agents, conversations: conversations, media: media, memories: memories)
         do {
             let encoder = JSONEncoder()
             let data = try encoder.encode(snapshot)
@@ -99,7 +105,7 @@ final class AppStore {
 
     func isGenerating(_ conversationID: UUID) -> Bool { generating.contains(conversationID) }
 
-    private func conversationIndex(_ id: UUID) -> Int? { conversations.firstIndex { $0.id == id } }
+    func conversationIndex(_ id: UUID) -> Int? { conversations.firstIndex { $0.id == id } }
 
     // MARK: - Servers
 
@@ -152,6 +158,7 @@ final class AppStore {
             deleteFiles(of: conversation.messages)
         }
         conversations.removeAll { $0.agentID == id }
+        memories.removeAll { $0.agentID == id }
         agents.removeAll { $0.id == id }
         save()
     }
@@ -194,6 +201,9 @@ final class AppStore {
         guard let i = conversationIndex(id) else { return }
         deleteFiles(of: conversations[i].messages)
         conversations[i].messages.removeAll()
+        conversations[i].summary = nil
+        conversations[i].summaryCoversUntil = nil
+        conversations[i].memoryExtractedUntil = nil
         if let agent = agent(id: conversations[i].agentID), !agent.greeting.isBlank {
             conversations[i].messages.append(ChatMessage(role: .assistant, content: agent.greeting.trimmed))
         }
@@ -322,10 +332,15 @@ final class AppStore {
         if let ci = conversationIndex(conversationID),
            let mi = conversations[ci].messages.firstIndex(where: { $0.id == replyID }) {
             let message = conversations[ci].messages[mi]
+            let succeeded = !message.isError && !message.content.isBlank
             if message.content.isBlank && message.reasoning.isBlank && !message.isError {
                 conversations[ci].messages[mi].content = "（已停止）"
             }
             conversations[ci].updatedAt = Date()
+            if succeeded {
+                // 更新滚动摘要、自动提取长期记忆（按需，在后台进行）
+                scheduleMaintenance(conversationID)
+            }
         }
         save()
     }
@@ -338,24 +353,59 @@ final class AppStore {
 
     /// 组装发送给模型的消息：系统提示词（人格设定）+ 历史上下文 + 图片/视频帧
     private func buildRequestMessages(conversation: Conversation, agent: Agent) -> [RequestMessage] {
-        var history = conversation.messages.filter { message in
+        let allHistory = conversation.messages.filter { message in
             !message.isError && message.role != .system && !(message.role == .assistant && message.content.isBlank)
         }
-        if agent.contextMessageLimit > 0 && history.count > agent.contextMessageLimit {
-            history = Array(history.suffix(agent.contextMessageLimit))
+        var history = allHistory
+        var summaryText: String?
+
+        if agent.contextMessageLimit > 0 {
+            let limit = agent.contextMessageLimit
+            if agent.rollingSummary {
+                // 已被摘要覆盖的早期消息不再逐条发送，改为发送摘要
+                if let until = conversation.summaryCoversUntil {
+                    history = history.filter { $0.createdAt > until }
+                }
+                if let summary = conversation.summary, !summary.isBlank {
+                    summaryText = summary.trimmed
+                }
+                // 摘要还没来得及更新时的上限
+                let cap = limit + Self.summaryBatch * 2
+                if history.count > cap { history = Array(history.suffix(cap)) }
+            } else if history.count > limit {
+                history = Array(history.suffix(limit))
+            }
         }
 
-        var system = agent.systemPrompt.trimmed
-        // 部分模型模板要求第一条非系统消息必须来自用户，因此把开场白并入系统提示词
+        var systemParts: [String] = []
+        let persona = agent.systemPrompt.trimmed
+        if !persona.isEmpty { systemParts.append(persona) }
+
+        if agent.memoryEnabled {
+            let items = memories(for: agent.id)
+            if !items.isEmpty {
+                systemParts.append(
+                    "【长期记忆】\n以下是你在以往的对话中了解到的信息，请在合适的时候自然地运用，不要生硬地复述：\n"
+                        + items.map { "- " + $0.text }.joined(separator: "\n")
+                )
+            }
+        }
+        if let summaryText {
+            systemParts.append("【本次对话早期内容的摘要】\n\(summaryText)")
+        }
+
+        // 部分模型模板要求第一条非系统消息必须来自用户
+        let startsAtBeginning = history.first?.id == allHistory.first?.id
         var openings: [String] = []
         while let first = history.first, first.role == .assistant {
             openings.append(ThinkParser.split(first.content).answer)
             history.removeFirst()
         }
-        if !openings.isEmpty {
-            let note = "（对话开始时你已经对用户说过：「\(openings.joined(separator: "\n"))」）"
-            system = system.isEmpty ? note : system + "\n\n" + note
+        if !openings.isEmpty && startsAtBeginning {
+            // 开场白并入系统提示词
+            systemParts.append("（对话开始时你已经对用户说过：「\(openings.joined(separator: "\n"))」）")
         }
+        let system = systemParts.joined(separator: "\n\n")
 
         var result: [RequestMessage] = []
         if !system.isEmpty {

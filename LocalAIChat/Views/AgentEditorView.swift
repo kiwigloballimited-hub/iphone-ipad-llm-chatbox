@@ -26,6 +26,7 @@ struct AgentEditorView: View {
                 modelSection
                 thinkingSection
                 personaSection
+                memorySection
                 greetingSection
                 parameterSection
                 Section {
@@ -164,6 +165,25 @@ struct AgentEditorView: View {
             Text("人格设定")
         } footer: {
             Text("每个助手的人格设定和对话记录相互独立。")
+        }
+    }
+
+    private var memorySection: some View {
+        Section {
+            Toggle("启用长期记忆", isOn: $agent.memoryEnabled)
+            if agent.memoryEnabled {
+                NavigationLink {
+                    MemoryListView(agentID: agent.id)
+                } label: {
+                    LabeledContent("记忆本", value: "\(store.memories(for: agent.id).count) 条")
+                }
+                Toggle("自动记住新信息", isOn: $agent.autoMemory)
+            }
+            Toggle("长对话自动摘要", isOn: $agent.rollingSummary)
+        } header: {
+            Text("记忆")
+        } footer: {
+            Text("长期记忆：记忆本里的内容会带入这个助手的所有对话（跨会话）。开启「自动记住」后，每聊几轮会自动提取新信息加入记忆本；也可以在聊天界面右上角菜单里手动「记住这次对话」。\n长对话自动摘要：同一个对话超过「记忆的历史消息」条数后，早期内容会被压缩成摘要继续保留，而不是直接遗忘。\n以上整理工作会使用同一个模型在后台进行。")
         }
     }
 

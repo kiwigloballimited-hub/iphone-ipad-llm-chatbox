@@ -184,6 +184,15 @@ struct LLMClient {
         }
     }
 
+    /// 一次性获取完整回复（用于记忆提取、摘要等后台任务）。会去掉 <think> 部分。
+    func complete(messages: [RequestMessage], options: GenerationOptions) async throws -> String {
+        var text = ""
+        for try await event in streamChat(messages: messages, options: options) {
+            if case .content(let piece) = event { text += piece }
+        }
+        return ThinkParser.split(text).answer.trimmed
+    }
+
     private func buildChatRequest(messages: [RequestMessage], options: GenerationOptions, includeThinking: Bool) throws -> URLRequest {
         var body: [String: Any]
         let url: URL

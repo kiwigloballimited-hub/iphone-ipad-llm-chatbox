@@ -93,6 +93,12 @@ struct Agent: Codable, Identifiable, Hashable {
     var createdAt = Date()
     /// 思考强度。可选类型，以便兼容旧版本保存的数据（nil = 自动）
     var thinkingLevel: ThinkingLevel?
+    /// 是否在对话中使用长期记忆（nil = 开启）
+    var memoryEnabledSetting: Bool?
+    /// 是否自动从对话中提取记忆（nil = 关闭）
+    var autoMemorySetting: Bool?
+    /// 超出上下文条数时，是否把早期消息压缩成摘要（nil = 开启）
+    var rollingSummarySetting: Bool?
 
     var systemPrompt: String { persona.systemPrompt(agentName: name) }
 
@@ -100,6 +106,39 @@ struct Agent: Codable, Identifiable, Hashable {
         get { thinkingLevel ?? .auto }
         set { thinkingLevel = newValue }
     }
+
+    var memoryEnabled: Bool {
+        get { memoryEnabledSetting ?? true }
+        set { memoryEnabledSetting = newValue }
+    }
+
+    var autoMemory: Bool {
+        get { autoMemorySetting ?? false }
+        set { autoMemorySetting = newValue }
+    }
+
+    var rollingSummary: Bool {
+        get { rollingSummarySetting ?? true }
+        set { rollingSummarySetting = newValue }
+    }
+}
+
+// MARK: - Long-term memory
+
+/// 助手的一条长期记忆（跨会话）
+struct MemoryItem: Codable, Identifiable, Hashable {
+    enum Source: String, Codable {
+        case manual   // 用户手动添加
+        case extracted // 用户确认后从对话中提取
+        case auto     // 自动提取
+    }
+
+    var id = UUID()
+    var agentID: UUID
+    var text: String
+    var source: Source = .manual
+    var createdAt = Date()
+    var conversationID: UUID?
 }
 
 /// 推理模型的思考强度
@@ -179,6 +218,12 @@ struct Conversation: Codable, Identifiable, Hashable {
     var messages: [ChatMessage] = []
     var createdAt = Date()
     var updatedAt = Date()
+    /// 早期消息的滚动摘要
+    var summary: String?
+    /// 摘要已覆盖到的消息时间（含）
+    var summaryCoversUntil: Date?
+    /// 自动记忆已处理到的消息时间（含）
+    var memoryExtractedUntil: Date?
 
     static let defaultTitle = "新对话"
 
@@ -235,4 +280,5 @@ struct AppData: Codable {
     var agents: [Agent]
     var conversations: [Conversation]
     var media: MediaSettings
+    var memories: [MemoryItem]?
 }
