@@ -34,8 +34,38 @@ struct ServerConfig: Codable, Identifiable, Hashable {
     var name: String = "本地服务器"
     var baseURL: String = "http://192.168.1.100:11434"
     var apiType: APIType = .ollama
+    /// 只保存在内存和钥匙串中，不会写入 data.json（见下方自定义 Codable）
     var apiKey: String = ""
     var defaultModel: String = ""
+}
+
+// 放在 extension 中以保留自动生成的成员初始化方法。
+extension ServerConfig {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, baseURL, apiType, apiKey, defaultModel
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = ServerConfig()
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? defaults.id
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? defaults.name
+        baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL) ?? defaults.baseURL
+        apiType = try container.decodeIfPresent(APIType.self, forKey: .apiType) ?? defaults.apiType
+        // 旧版本以明文保存的 API Key：仍然读取，以便迁移到钥匙串
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        defaultModel = try container.decodeIfPresent(String.self, forKey: .defaultModel) ?? defaults.defaultModel
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(apiType, forKey: .apiType)
+        try container.encode(defaultModel, forKey: .defaultModel)
+        // apiKey 故意不写入，保存在钥匙串中
+    }
 }
 
 // MARK: - Persona & Agent

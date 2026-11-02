@@ -237,6 +237,8 @@ struct ServerEditorView: View {
                         .autocorrectionDisabled()
                 } header: {
                     Text("认证（可选）")
+                } footer: {
+                    Text("API Key 加密保存在本机的系统钥匙串中，不会写入聊天数据文件。")
                 }
 
                 Section {

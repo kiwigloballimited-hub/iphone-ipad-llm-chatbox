@@ -48,12 +48,34 @@ final class AppStore {
             conversations = decoded.conversations
             media = decoded.media
             memories = decoded.memories ?? []
+            if loadAPIKeysFromKeychain() {
+                // 旧版本明文保存的 API Key 已迁移到钥匙串，立即重写 data.json 去掉明文
+                saveNow()
+            }
         } catch {
             // 解析失败时保留一份备份，避免数据被覆盖丢失
             let backup = Storage.baseDirectory.appendingPathComponent("data-backup-\(Int(Date().timeIntervalSince1970)).json")
             try? data.write(to: backup)
             print("加载数据失败：\(error)")
         }
+    }
+
+    /// 从钥匙串读取每个服务器的 API Key，并把 data.json 中残留的明文 Key 迁移到钥匙串。
+    /// 有 Key 迁移成功时返回 true（需要重新保存以清除明文）。
+    private func loadAPIKeysFromKeychain() -> Bool {
+        var migrated = false
+        for i in servers.indices {
+            let id = servers[i].id
+            let legacyKey = servers[i].apiKey
+            if let stored = KeychainStore.apiKey(for: id) {
+                // 钥匙串中的值为准（data.json 中可能是尚未清除的旧值）
+                servers[i].apiKey = stored
+                if !legacyKey.isEmpty { migrated = true }
+            } else if !legacyKey.isEmpty, KeychainStore.setAPIKey(legacyKey, for: id) {
+                migrated = true
+            }
+        }
+        return migrated
     }
 
     /// 延迟保存（合并短时间内的多次修改）
@@ -115,6 +137,7 @@ final class AppStore {
     // MARK: - Servers
 
     func upsertServer(_ server: ServerConfig) {
+        KeychainStore.setAPIKey(server.apiKey, for: server.id)
         if let i = servers.firstIndex(where: { $0.id == server.id }) {
             servers[i] = server
         } else {
@@ -125,6 +148,7 @@ final class AppStore {
 
     func deleteServer(_ id: UUID) {
         servers.removeAll { $0.id == id }
+        KeychainStore.deleteAPIKey(for: id)
         for i in agents.indices where agents[i].serverID == id {
             agents[i].serverID = nil
         }
