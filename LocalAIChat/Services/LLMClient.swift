@@ -12,6 +12,7 @@ struct GenerationOptions {
     var temperature: Double
     var maxTokens: Int
     var thinking: ThinkingLevel = .auto
+    var penalties: PenaltySettings?
 }
 
 enum StreamEvent {
@@ -148,13 +149,14 @@ struct LLMClient {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    var request = try buildChatRequest(messages: messages, options: options, includeThinking: true)
+                    var request = try buildChatRequest(messages: messages, options: options, compatibilityMode: false)
                     var (bytes, response) = try await session.bytes(for: request)
                     guard var http = response as? HTTPURLResponse else { throw LLMError.badResponse }
 
-                    // 部分服务器 / 模型不认识思考参数（例如模型不支持思考），此时去掉思考参数重试一次
-                    if options.thinking != .auto && [400, 422].contains(http.statusCode) {
-                        request = try buildChatRequest(messages: messages, options: options, includeThinking: false)
+                    // 部分服务器 / 模型不认识思考参数或非标准的重复惩罚参数，此时去掉这些参数重试一次
+                    let usesExtensions = options.thinking != .auto || options.penalties != nil
+                    if usesExtensions && [400, 422].contains(http.statusCode) {
+                        request = try buildChatRequest(messages: messages, options: options, compatibilityMode: true)
                         (bytes, response) = try await session.bytes(for: request)
                         guard let retried = response as? HTTPURLResponse else { throw LLMError.badResponse }
                         http = retried
@@ -193,7 +195,8 @@ struct LLMClient {
         return ThinkParser.split(text).answer.trimmed
     }
 
-    private func buildChatRequest(messages: [RequestMessage], options: GenerationOptions, includeThinking: Bool) throws -> URLRequest {
+    /// - Parameter compatibilityMode: true 时只发送标准参数（不发送思考参数和非标准的重复惩罚参数）
+    private func buildChatRequest(messages: [RequestMessage], options: GenerationOptions, compatibilityMode: Bool) throws -> URLRequest {
         var body: [String: Any]
         let url: URL
 
@@ -224,7 +227,17 @@ struct LLMClient {
                 "temperature": options.temperature,
             ]
             if options.maxTokens > 0 { body["max_tokens"] = options.maxTokens }
-            if includeThinking {
+            if let penalties = options.penalties {
+                body["frequency_penalty"] = penalties.frequencyPenalty
+                body["presence_penalty"] = penalties.presencePenalty
+                if !compatibilityMode {
+                    // 非标准参数：llama.cpp / LM Studio 使用 repeat_penalty，vLLM 使用 repetition_penalty
+                    body["repeat_penalty"] = penalties.repeatPenalty
+                    body["repetition_penalty"] = penalties.repeatPenalty
+                    body["repeat_last_n"] = penalties.repeatLastN
+                }
+            }
+            if !compatibilityMode {
                 body.merge(Self.openAIThinkingParameters(options.thinking)) { _, new in new }
             }
 
@@ -238,13 +251,19 @@ struct LLMClient {
             }
             var modelOptions: [String: Any] = ["temperature": options.temperature]
             if options.maxTokens > 0 { modelOptions["num_predict"] = options.maxTokens }
+            if let penalties = options.penalties {
+                modelOptions["repeat_penalty"] = penalties.repeatPenalty
+                modelOptions["repeat_last_n"] = penalties.repeatLastN
+                modelOptions["frequency_penalty"] = penalties.frequencyPenalty
+                modelOptions["presence_penalty"] = penalties.presencePenalty
+            }
             body = [
                 "model": options.model,
                 "messages": payload,
                 "stream": true,
                 "options": modelOptions,
             ]
-            if includeThinking, let think = Self.ollamaThinkValue(options.thinking, model: options.model) {
+            if !compatibilityMode, let think = Self.ollamaThinkValue(options.thinking, model: options.model) {
                 body["think"] = think
             }
         }

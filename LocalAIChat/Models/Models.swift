@@ -99,6 +99,8 @@ struct Agent: Codable, Identifiable, Hashable {
     var autoMemorySetting: Bool?
     /// 超出上下文条数时，是否把早期消息压缩成摘要（nil = 开启）
     var rollingSummarySetting: Bool?
+    /// 重复惩罚（nil = 使用服务器 / 模型默认值）
+    var penalties: PenaltySettings?
 
     var systemPrompt: String { persona.systemPrompt(agentName: name) }
 
@@ -121,6 +123,24 @@ struct Agent: Codable, Identifiable, Hashable {
         get { rollingSummarySetting ?? true }
         set { rollingSummarySetting = newValue }
     }
+
+    /// 编辑界面使用：开启自定义后读写具体数值
+    var penaltyValues: PenaltySettings {
+        get { penalties ?? PenaltySettings() }
+        set { penalties = newValue }
+    }
+}
+
+/// 重复惩罚相关参数
+struct PenaltySettings: Codable, Hashable {
+    /// 重复惩罚（llama.cpp / Ollama 的 repeat_penalty，vLLM 的 repetition_penalty）。1.0 = 不惩罚
+    var repeatPenalty: Double = 1.1
+    /// 参与重复判断的最近 token 数（Ollama / llama.cpp 的 repeat_last_n）
+    var repeatLastN: Int = 64
+    /// 频率惩罚（OpenAI 标准参数），出现次数越多惩罚越重。0 = 不惩罚
+    var frequencyPenalty: Double = 0
+    /// 存在惩罚（OpenAI 标准参数），只要出现过就惩罚，鼓励换话题。0 = 不惩罚
+    var presencePenalty: Double = 0
 }
 
 // MARK: - Long-term memory

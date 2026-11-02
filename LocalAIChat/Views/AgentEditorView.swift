@@ -29,6 +29,7 @@ struct AgentEditorView: View {
                 memorySection
                 greetingSection
                 parameterSection
+                penaltySection
                 Section {
                     Button("预览系统提示词", systemImage: "doc.text.magnifyingglass") {
                         showPromptPreview = true
@@ -253,6 +254,49 @@ struct AgentEditorView: View {
         }
     }
 
+    private var penaltySection: some View {
+        Section {
+            Toggle("自定义重复惩罚", isOn: Binding(
+                get: { agent.penalties != nil },
+                set: { agent.penalties = $0 ? PenaltySettings() : nil }
+            ))
+            if agent.penalties != nil {
+                ParameterSlider(
+                    title: "重复惩罚",
+                    value: $agent.penaltyValues.repeatPenalty,
+                    range: 1.0...2.0, step: 0.01,
+                    lowLabel: "1.0 不惩罚", highLabel: "越大越不重复"
+                )
+                Stepper(value: $agent.penaltyValues.repeatLastN, in: 0...2048, step: 32) {
+                    HStack {
+                        Text("检查范围")
+                        Spacer()
+                        Text("最近 \(agent.penaltyValues.repeatLastN) 个词元")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                ParameterSlider(
+                    title: "频率惩罚",
+                    value: $agent.penaltyValues.frequencyPenalty,
+                    range: -2.0...2.0, step: 0.05,
+                    lowLabel: "0 不惩罚", highLabel: "重复越多罚越重"
+                )
+                ParameterSlider(
+                    title: "存在惩罚",
+                    value: $agent.penaltyValues.presencePenalty,
+                    range: -2.0...2.0, step: 0.05,
+                    lowLabel: "0 不惩罚", highLabel: "鼓励新话题"
+                )
+                Button("恢复推荐值") { agent.penalties = PenaltySettings() }
+            }
+        } header: {
+            Text("重复惩罚")
+        } footer: {
+            Text("用来减少模型车轱辘话、反复说同一句话的情况。关闭时使用服务器 / 模型的默认值。\n• 重复惩罚：最常用，建议 1.05–1.2，太大可能导致用词奇怪。\n• 频率惩罚 / 存在惩罚：OpenAI 标准参数，一般 0–0.5 即可。\n不支持的服务器会自动忽略不认识的参数。")
+        }
+    }
+
     // MARK: Helpers
 
     private var selectedServer: ServerConfig? {
@@ -277,6 +321,34 @@ struct AgentEditorView: View {
             if availableModels.isEmpty { modelError = "服务器上没有可用的模型。" }
         } catch {
             modelError = LLMError.friendlyDescription(error)
+        }
+    }
+}
+
+private struct ParameterSlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let lowLabel: String
+    let highLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(value, format: .number.precision(.fractionLength(2)))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(value: $value, in: range, step: step)
+            HStack {
+                Text(lowLabel).font(.caption2)
+                Spacer()
+                Text(highLabel).font(.caption2)
+            }
+            .foregroundStyle(.secondary)
         }
     }
 }

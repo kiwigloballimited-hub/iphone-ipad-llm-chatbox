@@ -291,7 +291,7 @@ final class AppStore {
         let replyID = reply.id
 
         let client = LLMClient(server: server)
-        let options = GenerationOptions(model: model, temperature: agent.temperature, maxTokens: agent.maxTokens, thinking: agent.thinking)
+        let options = GenerationOptions(model: model, temperature: agent.temperature, maxTokens: agent.maxTokens, thinking: agent.thinking, penalties: agent.penalties)
         generating.insert(conversationID)
 
         tasks[conversationID] = Task { [weak self] in
