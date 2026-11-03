@@ -13,7 +13,7 @@ final class SpeechRecognizer {
     /// 输入音量（0...1），用于显示动画
     var level: Float = 0
 
-    @ObservationIgnored private let audioEngine = AVAudioEngine()
+    @ObservationIgnored private var audioEngine = AVAudioEngine()
     @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
     @ObservationIgnored private var task: SFSpeechRecognitionTask?
 
