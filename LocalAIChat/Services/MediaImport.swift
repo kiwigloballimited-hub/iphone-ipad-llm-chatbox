@@ -63,6 +63,27 @@ enum AttachmentFactory {
         }.value
     }
 
+    /// 把文档文字保存为附件
+    static func document(name: String, text: String, pageCount: Int?, originalByteCount: Int) async -> Attachment? {
+        await Task.detached(priority: .userInitiated) { () -> Attachment? in
+            let stored = text.count > DocumentImporter.maxStoredCharacters
+                ? String(text.prefix(DocumentImporter.maxStoredCharacters))
+                : text
+            guard let fileName = try? Storage.saveText(stored) else { return nil }
+            return Attachment(
+                kind: .document,
+                fileName: fileName,
+                width: 0,
+                height: 0,
+                byteCount: stored.utf8.count,
+                originalByteCount: max(originalByteCount, stored.utf8.count),
+                displayName: name,
+                pageCount: pageCount,
+                textLength: stored.count
+            )
+        }.value
+    }
+
     static func isVideo(_ type: UTType) -> Bool {
         type.conforms(to: .movie) || type.conforms(to: .video)
     }

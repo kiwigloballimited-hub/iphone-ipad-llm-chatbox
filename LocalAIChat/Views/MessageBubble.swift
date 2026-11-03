@@ -34,8 +34,25 @@ struct MessageBubble: View {
                 }
 
                 if !message.attachments.isEmpty {
-                    AttachmentGrid(attachments: message.attachments, alignTrailing: isUser) { previewAttachment = $0 }
-                        .contextMenu { menuItems(answer: answer) }
+                    let documents = message.attachments.filter { $0.kind == .document }
+                    let visual = message.attachments.filter(\.isVisual)
+                    ForEach(documents) { document in
+                        DocumentChip(attachment: document)
+                            .onTapGesture { previewAttachment = document }
+                            .contextMenu { menuItems(answer: answer) }
+                    }
+                    if !visual.isEmpty {
+                        AttachmentGrid(
+                            attachments: visual,
+                            alignTrailing: isUser,
+                            onTap: { previewAttachment = $0 },
+                            onAnnotate: { attachment in
+                                store.annotationRequest = AnnotationRequest(conversationID: conversationID, fileName: attachment.fileName)
+                            }
+                        ) {
+                            menuItems(answer: answer)
+                        }
+                    }
                 }
 
                 if let steps = message.steps, !steps.isEmpty {
@@ -314,7 +331,21 @@ struct AttachmentThumbnail: View {
 
     var body: some View {
         ZStack {
-            if let image = ImageCache.shared.image(for: attachment.fileName) {
+            if attachment.kind == .document {
+                // 文档：图标 + 文件名
+                VStack(spacing: 4) {
+                    Image(systemName: DocumentChip.icon(for: attachment))
+                        .font(.system(size: size * 0.3))
+                        .foregroundStyle(Color.accentColor)
+                    Text(attachment.displayName ?? "文档")
+                        .font(.system(size: 9))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 4)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.secondarySystemBackground))
+            } else if let image = ImageCache.shared.image(for: attachment.fileName) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -355,10 +386,12 @@ private struct CompactLabelStyle: LabelStyle {
     }
 }
 
-private struct AttachmentGrid: View {
+private struct AttachmentGrid<MenuItems: View>: View {
     let attachments: [Attachment]
     let alignTrailing: Bool
     let onTap: (Attachment) -> Void
+    let onAnnotate: (Attachment) -> Void
+    @ViewBuilder let menuItems: () -> MenuItems
 
     var body: some View {
         let size: CGFloat = attachments.count == 1 ? 180 : 86
@@ -367,10 +400,60 @@ private struct AttachmentGrid: View {
             ForEach(attachments) { attachment in
                 AttachmentThumbnail(attachment: attachment, size: size)
                     .onTapGesture { onTap(attachment) }
+                    .contextMenu {
+                        Button("用 Pencil 标注并提问", systemImage: "pencil.tip.crop.circle") {
+                            onAnnotate(attachment)
+                        }
+                        Divider()
+                        menuItems()
+                    }
             }
         }
         .fixedSize()
     }
+}
+
+/// 消息中的文档附件
+struct DocumentChip: View {
+    let attachment: Attachment
+
+    static func icon(for attachment: Attachment) -> String {
+        let name = (attachment.displayName ?? "").lowercased()
+        if name.hasSuffix(".pdf") { return "doc.richtext.fill" }
+        if name.hasSuffix(".md") || name.hasSuffix(".txt") { return "doc.plaintext.fill" }
+        if name.hasSuffix(".csv") { return "tablecells.fill" }
+        if name.hasSuffix(".json") || name.hasSuffix(".xml") { return "curlybraces.square.fill" }
+        return "doc.text.fill"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: Self.icon(for: attachment))
+                .font(.title2)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.displayName ?? "文档")
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: 280, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+    }
+
+    private var detail: String {
+        var parts: [String] = []
+        if let pages = attachment.pageCount { parts.append("\(pages) 页") }
+        if let length = attachment.textLength { parts.append("\(length.formatted()) 字") }
+        if length > AppStore.documentCharacterLimit { parts.append("超出部分不会发送") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var length: Int { attachment.textLength ?? 0 }
 }
 
 struct AttachmentPreview: View {
@@ -378,6 +461,14 @@ struct AttachmentPreview: View {
     let attachment: Attachment
 
     var body: some View {
+        if attachment.kind == .document {
+            DocumentPreview(attachment: attachment)
+        } else {
+            imagePreview
+        }
+    }
+
+    private var imagePreview: some View {
         NavigationStack {
             VStack(spacing: 16) {
                 if let image = ImageCache.shared.image(for: attachment.fileName) {
@@ -410,6 +501,43 @@ struct AttachmentPreview: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
                 }
+            }
+        }
+    }
+}
+
+/// 查看文档提取出的文字
+private struct DocumentPreview: View {
+    @Environment(\.dismiss) private var dismiss
+    let attachment: Attachment
+    @State private var text: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    DocumentChip(attachment: attachment)
+                    if let text {
+                        Text(text.count > 20000 ? String(text.prefix(20000)) + "\n……" : text)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .navigationTitle("文档内容")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .task {
+                let fileName = attachment.fileName
+                text = await Task.detached { Storage.loadText(fileName) ?? "" }.value
             }
         }
     }

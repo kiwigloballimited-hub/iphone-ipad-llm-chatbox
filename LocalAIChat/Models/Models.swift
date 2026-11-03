@@ -216,6 +216,8 @@ struct Attachment: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
         case image
         case videoFrame
+        /// PDF / 文本文件：保存提取出的文字（.txt），作为文字上下文发送
+        case document
     }
 
     var id = UUID()
@@ -231,6 +233,14 @@ struct Attachment: Codable, Identifiable, Hashable {
     /// 同一段视频抽出的帧共享同一个 groupID
     var videoGroupID: UUID?
     var videoDuration: Double?
+    /// 文档的原始文件名
+    var displayName: String?
+    var pageCount: Int?
+    /// 提取出的文字长度（字符数）
+    var textLength: Int?
+
+    /// 图片和视频帧会作为图片发送给模型；文档作为文字发送
+    var isVisual: Bool { kind != .document }
 }
 
 struct ChatMessage: Codable, Identifiable, Hashable {
@@ -401,6 +411,9 @@ struct Conversation: Codable, Identifiable, Hashable {
         }
         let text = ThinkParser.split(last.content).answer.trimmed
         if !text.isEmpty { return text }
+        if let document = last.attachments.first(where: { $0.kind == .document }) {
+            return "[文档] " + (document.displayName ?? "文档")
+        }
         if !last.attachments.isEmpty { return "[\(last.attachments.count) 张图片]" }
         return "…"
     }

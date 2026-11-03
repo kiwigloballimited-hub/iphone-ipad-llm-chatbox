@@ -211,7 +211,9 @@ extension AppStore {
             text = text.trimmed
             if text.count > 1500 { text = String(text.prefix(1500)) + "…" }
             if !message.attachments.isEmpty {
-                text = "[附带 \(message.attachments.count) 张图片/视频帧] " + text
+                let names = message.attachments.filter { $0.kind == .document }.compactMap(\.displayName)
+                let documents = names.isEmpty ? "" : "（文档：\(names.joined(separator: "、"))）"
+                text = "[附带 \(message.attachments.count) 个附件\(documents)] " + text
             }
             guard !text.isEmpty else { continue }
             lines.append("\(message.role == .user ? "用户" : agentName)：\(text)")

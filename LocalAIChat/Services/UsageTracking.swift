@@ -26,6 +26,17 @@ enum TokenEstimator {
         return Int((Double(cjk) + Double(other) / 3.8).rounded(.up))
     }
 
+    /// 附件：图片按固定数估算，文档按文字长度估算
+    static func estimate(attachments: [Attachment]) -> Int {
+        attachments.reduce(0) { total, attachment in
+            if attachment.kind == .document {
+                let length = min(attachment.textLength ?? 0, AppStore.documentCharacterLimit)
+                return total + Int(Double(length) * 0.7)
+            }
+            return total + imageTokens
+        }
+    }
+
     static func estimate(messages: [RequestMessage]) -> Int {
         messages.reduce(0) { total, message in
             total + estimate(message.text) + message.imageFiles.count * imageTokens + messageOverhead
@@ -308,7 +319,7 @@ extension AppStore {
            let usage = conversation.messages[index].usage {
             var used = usage.lastInputTokens + usage.lastOutputTokens
             for message in conversation.messages[(index + 1)...] {
-                used += TokenEstimator.estimate(message.content) + message.attachments.count * TokenEstimator.imageTokens
+                used += TokenEstimator.estimate(message.content) + TokenEstimator.estimate(attachments: message.attachments)
             }
             stats.contextUsed = used + draftTokens
             stats.contextEstimated = usage.estimated || index < conversation.messages.count - 1 || draftTokens > 0

@@ -32,6 +32,10 @@ struct ChatView: View {
     @State private var showUsage = false
     @State private var showPinned = false
     @State private var showVoice = false
+    @State private var annotationSource: AnnotationSource?
+    @State private var showAnnotatePicker = false
+    @State private var annotateItem: PhotosPickerItem?
+    @State private var isDropTargeted = false
     @FocusState private var inputFocused: Bool
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -47,11 +51,37 @@ struct ChatView: View {
                     messageList(conversation: conversation, agent: agent, generating: generating)
                     inputBar(generating: generating)
                 }
+                // 从「文件」、Safari 等拖入图片、PDF、文本、视频、链接
+                .onDrop(of: Self.droppableTypes, isTargeted: $isDropTargeted) { providers in
+                    Task { await importDropped(providers) }
+                    return true
+                }
+                .overlay {
+                    if isDropTargeted {
+                        DropTargetOverlay()
+                    }
+                }
             }
             .navigationTitle(conversation.title)
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showPinned) {
                 PinnedMessagesSheet(conversationID: conversationID)
+            }
+            .sheet(item: $annotationSource) { source in
+                PencilSheet(background: source.image) { attachments, suggestion in
+                    pendingAttachments.append(contentsOf: attachments)
+                    if !suggestion.isEmpty {
+                        inputText = inputText.isBlank ? suggestion : suggestion + "\n" + inputText
+                    }
+                } onInsertText: { text in
+                    inputText = inputText.isBlank ? text : inputText + "\n" + text
+                }
+            }
+            .onChange(of: store.annotationRequest) { _, request in
+                // 在消息里的图片上选择了「用 Pencil 标注」
+                guard let request, request.conversationID == conversationID else { return }
+                store.annotationRequest = nil
+                annotationSource = AnnotationSource(image: ImageCache.shared.image(for: request.fileName))
             }
             .sheet(isPresented: $showVoice) {
                 VoiceInputSheet(agent: agent) { text in
@@ -199,7 +229,7 @@ struct ChatView: View {
             }
             .fileImporter(
                 isPresented: $showFileImporter,
-                allowedContentTypes: [.image, .movie, .video],
+                allowedContentTypes: [.image, .movie, .video] + DocumentImporter.supportedTypes,
                 allowsMultipleSelection: true
             ) { result in
                 switch result {
@@ -353,6 +383,16 @@ struct ChatView: View {
                     HStack(spacing: 8) {
                         ForEach(pendingAttachments) { attachment in
                             AttachmentThumbnail(attachment: attachment, size: 64, showSize: true)
+                                .contextMenu {
+                                    if attachment.isVisual {
+                                        Button("用 Pencil 标注", systemImage: "pencil.tip.crop.circle") {
+                                            annotationSource = AnnotationSource(image: ImageCache.shared.image(for: attachment.fileName))
+                                        }
+                                    }
+                                    Button("移除", systemImage: "trash", role: .destructive) {
+                                        removePending(attachment)
+                                    }
+                                }
                                 .overlay(alignment: .topTrailing) {
                                     Button {
                                         removePending(attachment)
@@ -405,7 +445,12 @@ struct ChatView: View {
             HStack(alignment: .bottom, spacing: 10) {
                 Menu {
                     Button("照片 / 视频", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
-                    Button("从文件选择", systemImage: "folder") { showFileImporter = true }
+                    Button("从文件选择（图片 / PDF / 文本）", systemImage: "folder") { showFileImporter = true }
+                    Divider()
+                    Button("画板（手写 / 涂鸦）", systemImage: "pencil.and.scribble") {
+                        annotationSource = AnnotationSource(image: nil)
+                    }
+                    Button("标注图片…", systemImage: "pencil.tip.crop.circle") { showAnnotatePicker = true }
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 30))
@@ -451,6 +496,16 @@ struct ChatView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+        .photosPicker(isPresented: $showAnnotatePicker, selection: $annotateItem, matching: .images)
+        .onChange(of: annotateItem) { _, item in
+            guard let item else { return }
+            annotateItem = nil
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                    annotationSource = AnnotationSource(image: image)
+                }
+            }
+        }
     }
 
     private var canSend: Bool {
@@ -461,10 +516,12 @@ struct ChatView: View {
         let total = pendingAttachments.reduce(0) { $0 + $1.byteCount }
         let original = pendingAttachments.reduce(0) { $0 + $1.originalByteCount }
         let frames = pendingAttachments.filter { $0.kind == .videoFrame }.count
-        let images = pendingAttachments.count - frames
+        let documents = pendingAttachments.filter { $0.kind == .document }.count
+        let images = pendingAttachments.count - frames - documents
         var parts: [String] = []
         if images > 0 { parts.append("\(images) 张图片") }
         if frames > 0 { parts.append("\(frames) 个视频帧") }
+        if documents > 0 { parts.append("\(documents) 个文档") }
         var text = parts.joined(separator: " + ") + " · 共 \(Format.bytes(total))"
         if original > total { text += "（原始 \(Format.bytes(original))）" }
         return text
@@ -530,6 +587,11 @@ struct ChatView: View {
                         .appendingPathExtension(url.pathExtension.isEmpty ? "mov" : url.pathExtension)
                     try FileManager.default.copyItem(at: url, to: destination)
                     enqueueVideo(VideoSession(url: destination, fileSize: AttachmentFactory.fileSize(destination)))
+                } else if DocumentImporter.isDocument(type) {
+                    processingText = "正在读取文档…" + progress
+                    let imported = await DocumentImporter.importFile(at: url, type: type, settings: settings)
+                    pendingAttachments.append(contentsOf: imported.attachments)
+                    if let note = imported.note { infoMessage = note }
                 } else {
                     processingText = "正在压缩图片…" + progress
                     let data = try Data(contentsOf: url)
@@ -541,6 +603,57 @@ struct ChatView: View {
                 }
             } catch {
                 errorMessage = "导入失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    // MARK: - Drag & Drop
+
+    static let droppableTypes: [UTType] = [.image, .movie, .video, .pdf, .fileURL, .url, .text]
+
+    /// 处理拖进来的内容：图片、视频、PDF / 文本文件、链接、文字
+    private func importDropped(_ providers: [NSItemProvider]) async {
+        let settings = store.media
+        defer { processingText = nil }
+        for (index, provider) in providers.enumerated() {
+            let progress = providers.count > 1 ? " (\(index + 1)/\(providers.count))" : ""
+            let types = provider.registeredContentTypes
+
+            if let type = types.first(where: AttachmentFactory.isVideo) {
+                processingText = "正在读取视频…" + progress
+                if let url = await DropLoader.copyFile(provider, type: type) {
+                    enqueueVideo(VideoSession(url: url, fileSize: AttachmentFactory.fileSize(url)))
+                }
+            } else if types.contains(where: { $0.conforms(to: .image) }) {
+                processingText = "正在压缩图片…" + progress
+                if let data = await DropLoader.data(provider, type: .image),
+                   let attachment = await AttachmentFactory.image(from: data, settings: settings) {
+                    pendingAttachments.append(attachment)
+                }
+            } else if types.contains(where: { $0.conforms(to: .url) && !$0.conforms(to: .fileURL) }),
+                      let url = await DropLoader.url(provider), !url.isFileURL {
+                // 网页链接：放进输入框
+                inputText = inputText.isBlank ? url.absoluteString : inputText + "\n" + url.absoluteString
+            } else if let type = types.first(where: DocumentImporter.isDocument),
+                      type.conforms(to: .pdf) || DropLoader.looksLikeFile(provider),
+                      let url = await DropLoader.copyFile(provider, type: type) {
+                // PDF / 文本文件
+                processingText = "正在读取文档…" + progress
+                let imported = await DocumentImporter.importFile(at: url, type: type, settings: settings)
+                pendingAttachments.append(contentsOf: imported.attachments)
+                if let note = imported.note { infoMessage = note }
+                try? FileManager.default.removeItem(at: url)
+            } else if let url = await DropLoader.fileURL(provider) {
+                await importFiles([url])
+            } else if let text = await DropLoader.text(provider), !text.isBlank {
+                // 文字：短的放进输入框，长的作为文档附件
+                if text.count > 2000 {
+                    if let attachment = await DocumentImporter.importText(text, name: "拖入的文字") {
+                        pendingAttachments.append(attachment)
+                    }
+                } else {
+                    inputText = inputText.isBlank ? text : inputText + "\n" + text
+                }
             }
         }
     }
@@ -598,5 +711,90 @@ private struct EmptyChatHint: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// 拖拽时覆盖在聊天区域上的提示
+private struct DropTargetOverlay: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 8]))
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.accentColor.opacity(0.08)))
+            .overlay {
+                VStack(spacing: 10) {
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.system(size: 44))
+                    Text("松开以添加")
+                        .font(.title3.weight(.semibold))
+                    Text("图片 · PDF · 文本文件 · 视频 · 链接")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(Color.accentColor)
+            }
+            .padding(12)
+            .allowsHitTesting(false)
+    }
+}
+
+/// NSItemProvider 的异步读取（拖拽）
+enum DropLoader {
+    static func data(_ provider: NSItemProvider, type: UTType) async -> Data? {
+        await withCheckedContinuation { continuation in
+            provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+                continuation.resume(returning: data)
+            }
+        }
+    }
+
+    /// 把拖进来的文件复制到临时目录（回调结束后原文件可能被删除）
+    static func copyFile(_ provider: NSItemProvider, type: UTType) async -> URL? {
+        await withCheckedContinuation { continuation in
+            provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
+                guard let url else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let destination = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathComponent(url.lastPathComponent)
+                do {
+                    try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try FileManager.default.copyItem(at: url, to: destination)
+                    continuation.resume(returning: destination)
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    /// 是文件（例如从「文件」App 拖来的 .txt），而不是网页上选中的一段文字
+    static func looksLikeFile(_ provider: NSItemProvider) -> Bool {
+        provider.suggestedName != nil && !provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier)
+    }
+
+    static func url(_ provider: NSItemProvider) async -> URL? {
+        guard provider.canLoadObject(ofClass: URL.self) else { return nil }
+        return await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url)
+            }
+        }
+    }
+
+    static func fileURL(_ provider: NSItemProvider) async -> URL? {
+        guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { return nil }
+        guard let url = await url(provider), url.isFileURL else { return nil }
+        return url
+    }
+
+    static func text(_ provider: NSItemProvider) async -> String? {
+        guard provider.canLoadObject(ofClass: String.self) else { return nil }
+        return await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: String.self) { text, _ in
+                continuation.resume(returning: text)
+            }
+        }
     }
 }

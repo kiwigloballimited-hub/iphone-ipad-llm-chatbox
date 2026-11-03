@@ -83,13 +83,25 @@ enum Storage {
         return name
     }
 
+    /// 保存文档提取出的文字
+    static func saveText(_ text: String) throws -> String {
+        let name = UUID().uuidString + ".txt"
+        try Data(text.utf8).write(to: attachmentURL(name), options: .atomic)
+        return name
+    }
+
+    static func loadText(_ fileName: String) -> String? {
+        loadAttachment(fileName).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     static func loadAttachment(_ fileName: String) -> Data? {
         try? Data(contentsOf: attachmentURL(fileName))
     }
 
     /// 复制一份附件文件，返回新文件名
     static func duplicateAttachment(_ fileName: String) -> String? {
-        let name = UUID().uuidString + ".jpg"
+        let ext = (fileName as NSString).pathExtension
+        let name = UUID().uuidString + "." + (ext.isEmpty ? "jpg" : ext)
         do {
             try FileManager.default.copyItem(at: attachmentURL(fileName), to: attachmentURL(name))
             return name

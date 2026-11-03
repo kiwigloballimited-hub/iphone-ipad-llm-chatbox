@@ -2,6 +2,11 @@ import Foundation
 import Observation
 import SwiftUI
 
+struct AnnotationRequest: Equatable {
+    let conversationID: UUID
+    let fileName: String
+}
+
 /// 全局状态：服务器、助手、对话、媒体设置，以及生成任务管理。数据以 JSON 保存在本机。
 @MainActor
 @Observable
@@ -33,6 +38,8 @@ final class AppStore {
     var navigationTarget: UUID?
     /// 请求在某个对话中打开语音输入（操作按钮 / Siri / 小组件）
     var voiceRequest: UUID?
+    /// 请求用 Apple Pencil 标注对话里的某张图片
+    var annotationRequest: AnnotationRequest?
     /// 断线重试状态（按对话显示）
     var retryStatus: [UUID: String] = [:]
     /// 等待用户确认的操作说明（按对话）
@@ -272,6 +279,8 @@ final class AppStore {
             let base = text.trimmed.replacingOccurrences(of: "\n", with: " ")
             if !base.isEmpty {
                 conversations[i].title = String(base.prefix(24))
+            } else if let document = attachments.first(where: { $0.kind == .document }) {
+                conversations[i].title = String(("文档：" + (document.displayName ?? "文档")).prefix(24))
             } else if attachments.contains(where: { $0.kind == .videoFrame }) {
                 conversations[i].title = "视频分析"
             } else if !attachments.isEmpty {
@@ -603,8 +612,13 @@ final class AppStore {
             let lines = pinnedOutside.map { message -> String in
                 let speaker = message.role == .user ? "用户" : "你（\(agent.name)）"
                 var text = message.role == .assistant ? ThinkParser.split(message.content).answer : message.content
-                if !message.attachments.isEmpty {
-                    text = "[附带 \(message.attachments.count) 张图片/视频帧] " + text
+                let visualCount = message.attachments.filter(\.isVisual).count
+                if visualCount > 0 {
+                    text = "[附带 \(visualCount) 张图片/视频帧] " + text
+                }
+                let documents = message.attachments.filter { $0.kind == .document }
+                if !documents.isEmpty {
+                    text = Self.documentContext(documents) + text
                 }
                 return "\(speaker)：\(text.trimmed)"
             }
@@ -625,21 +639,44 @@ final class AppStore {
             result.append(RequestMessage(role: .system, text: system))
         }
 
-        let lastWithMedia = history.lastIndex { $0.role == .user && !$0.attachments.isEmpty }
+        let lastWithMedia = history.lastIndex { $0.role == .user && $0.attachments.contains(where: \.isVisual) }
         for (index, message) in history.enumerated() {
             var text = message.role == .assistant ? ThinkParser.split(message.content).answer : message.content
             var files: [String] = []
-            if !message.attachments.isEmpty {
+            // 文档：提取的文字作为上下文（始终发送；不需要时可以对这条消息选择「不发送给模型」）
+            let documents = message.attachments.filter { $0.kind == .document }
+            if !documents.isEmpty {
+                text = Self.documentContext(documents) + text
+            }
+            let visual = message.attachments.filter(\.isVisual)
+            if !visual.isEmpty {
                 if media.sendHistoryImages || index == lastWithMedia {
-                    files = message.attachments.map(\.fileName)
-                    text = Self.describeAttachments(message.attachments) + text
+                    files = visual.map(\.fileName)
+                    text = Self.describeAttachments(visual) + text
                 } else {
-                    text = "[此前发送过 \(message.attachments.count) 张图片/视频帧]\n" + text
+                    text = "[此前发送过 \(visual.count) 张图片/视频帧]\n" + text
                 }
             }
             result.append(RequestMessage(role: message.role, text: text, imageFiles: files))
         }
         return result
+    }
+
+    /// 单个文档发送给模型的最多字符数
+    nonisolated static let documentCharacterLimit = 40_000
+
+    /// 文档内容（作为文字上下文）
+    nonisolated static func documentContext(_ documents: [Attachment]) -> String {
+        var parts: [String] = []
+        for document in documents {
+            let content = Storage.loadText(document.fileName) ?? ""
+            let limited = content.count > documentCharacterLimit
+                ? String(content.prefix(documentCharacterLimit)) + "\n……（文档较长，后面的内容已省略）"
+                : content
+            let pages = document.pageCount.map { "，共 \($0) 页" } ?? ""
+            parts.append("【附件文档：\(document.displayName ?? "文档")\(pages)】\n\(limited)\n【文档结束】")
+        }
+        return parts.joined(separator: "\n\n") + "\n\n"
     }
 
     /// 为视频帧补充时间信息，帮助模型按时间顺序理解画面
