@@ -89,6 +89,7 @@ extension AppStore {
 
         let limit = agent.contextMessageLimit
         let uncovered = Self.usableMessages(conversation.messages).filter { message in
+            if let start = conversation.contextStartsAt, message.createdAt < start { return false }
             guard let until = conversation.summaryCoversUntil else { return true }
             return message.createdAt > until
         }
@@ -197,7 +198,7 @@ extension AppStore {
 
     nonisolated static func usableMessages(_ messages: [ChatMessage]) -> [ChatMessage] {
         messages.filter { message in
-            !message.isError && message.role != .system
+            !message.isError && message.role != .system && !message.isExcluded
                 && !(message.content.isBlank && message.attachments.isEmpty)
         }
     }

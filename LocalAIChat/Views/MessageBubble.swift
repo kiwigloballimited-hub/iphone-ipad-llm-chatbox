@@ -29,8 +29,13 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
+                if message.isPinned || message.isExcluded {
+                    contextBadge
+                }
+
                 if !message.attachments.isEmpty {
                     AttachmentGrid(attachments: message.attachments, alignTrailing: isUser) { previewAttachment = $0 }
+                        .contextMenu { menuItems(answer: answer) }
                 }
 
                 if let steps = message.steps, !steps.isEmpty {
@@ -89,6 +94,7 @@ struct MessageBubble: View {
                 Spacer(minLength: 48)
             }
         }
+        .opacity(message.isExcluded ? 0.45 : 1)
         .sheet(item: $previewAttachment) { attachment in
             AttachmentPreview(attachment: attachment)
         }
@@ -116,10 +122,49 @@ struct MessageBubble: View {
             }
         }
         if !isStreaming {
+            Section("上下文") {
+                Button(message.isPinned ? "取消置顶" : "置顶到上下文", systemImage: message.isPinned ? "pin.slash" : "pin") {
+                    store.togglePin(message.id, in: conversationID)
+                }
+                Button(message.isExcluded ? "重新发送给模型" : "不发送给模型", systemImage: message.isExcluded ? "eye" : "eye.slash") {
+                    store.toggleExclude(message.id, in: conversationID)
+                }
+                Button("从这里开始新的上下文", systemImage: "scissors") {
+                    store.setContextStart(message.id, in: conversationID)
+                }
+            }
+            Section("分支") {
+                Button("从这里分叉", systemImage: "arrow.triangle.branch") {
+                    if let forkID = store.forkConversation(conversationID, at: message.id, includeMessage: true) {
+                        store.navigate(to: forkID)
+                    }
+                }
+                if isUser {
+                    Button("编辑并分叉", systemImage: "pencil.and.list.clipboard") {
+                        if let forkID = store.forkForEditing(conversationID, at: message.id) {
+                            store.navigate(to: forkID)
+                        }
+                    }
+                }
+            }
             Button("删除", systemImage: "trash", role: .destructive) {
                 store.deleteMessage(message.id, in: conversationID)
             }
         }
+    }
+
+    /// 置顶 / 排除的标记
+    private var contextBadge: some View {
+        Group {
+            if message.isPinned {
+                Label("已置顶，始终发送给模型", systemImage: "pin.fill")
+                    .foregroundStyle(.orange)
+            } else {
+                Label("不发送给模型", systemImage: "eye.slash")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption2)
     }
 
     static func markdown(_ text: String) -> AttributedString {

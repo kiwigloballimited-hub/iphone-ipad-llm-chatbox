@@ -248,6 +248,13 @@ struct ChatMessage: Codable, Identifiable, Hashable {
     var errorText: String?
     /// 生成这条回复消耗的 token（可能包含多次请求，例如重试、工具调用）
     var usage: TokenUsage?
+    /// 置顶：始终发送给模型，不会被历史窗口丢弃
+    var pinned: Bool?
+    /// 排除：仍然显示，但不发送给模型
+    var excluded: Bool?
+
+    var isPinned: Bool { pinned ?? false }
+    var isExcluded: Bool { excluded ?? false }
 }
 
 /// Token 用量。服务器没有返回时按字数估算（estimated = true）
@@ -375,6 +382,15 @@ struct Conversation: Codable, Identifiable, Hashable {
     var memoryExtractedUntil: Date?
     /// 后台整理（摘要、记忆提取）消耗的 token
     var backgroundUsage: TokenUsage?
+    /// 上下文起点：这个时间之前的消息不再发送给模型（置顶的除外）
+    var contextStartsAt: Date?
+    /// 最近一次手动调整上下文（置顶 / 排除 / 起点）的时间
+    var contextEditedAt: Date?
+    /// 分支：来源对话
+    var parentID: UUID?
+    var parentTitle: String?
+    /// 分支：从原对话复制过来的最后一条消息（之后是分支里的新内容）
+    var forkPointMessageID: UUID?
 
     static let defaultTitle = "新对话"
 

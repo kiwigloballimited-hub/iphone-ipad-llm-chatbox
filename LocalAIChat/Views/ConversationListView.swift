@@ -100,6 +100,11 @@ private struct ConversationRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
+                if conversation.parentID != nil {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
+                }
                 Text(conversation.title)
                     .font(.body.weight(.medium))
                     .lineLimit(1)

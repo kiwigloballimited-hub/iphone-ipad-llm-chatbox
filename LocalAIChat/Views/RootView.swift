@@ -24,7 +24,20 @@ struct RootView: View {
             }
         }
         .onChange(of: selectedAgentID) { _, _ in
+            if let target = store.navigationTarget, let conversation = store.conversation(id: target),
+               conversation.agentID == selectedAgentID {
+                return // 分支跳转导致的切换，保留目标对话
+            }
             selectedConversationID = nil
+        }
+        .onChange(of: store.navigationTarget) { _, target in
+            // 例如新建分支后，跳转到新对话
+            guard let target, let conversation = store.conversation(id: target) else { return }
+            if selectedAgentID != conversation.agentID {
+                selectedAgentID = conversation.agentID
+            }
+            selectedConversationID = target
+            DispatchQueue.main.async { store.navigationTarget = nil }
         }
     }
 }

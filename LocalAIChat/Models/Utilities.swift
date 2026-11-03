@@ -87,6 +87,17 @@ enum Storage {
         try? Data(contentsOf: attachmentURL(fileName))
     }
 
+    /// 复制一份附件文件，返回新文件名
+    static func duplicateAttachment(_ fileName: String) -> String? {
+        let name = UUID().uuidString + ".jpg"
+        do {
+            try FileManager.default.copyItem(at: attachmentURL(fileName), to: attachmentURL(name))
+            return name
+        } catch {
+            return nil
+        }
+    }
+
     static func deleteAttachment(_ fileName: String) {
         try? FileManager.default.removeItem(at: attachmentURL(fileName))
         ImageCache.shared.remove(fileName)

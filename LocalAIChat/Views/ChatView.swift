@@ -30,6 +30,7 @@ struct ChatView: View {
     @State private var showSummary = false
     @State private var showBrowser = false
     @State private var showUsage = false
+    @State private var showPinned = false
     @FocusState private var inputFocused: Bool
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -48,6 +49,17 @@ struct ChatView: View {
             }
             .navigationTitle(conversation.title)
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showPinned) {
+                PinnedMessagesSheet(conversationID: conversationID)
+            }
+            .onAppear {
+                // 「编辑并分叉」带过来的草稿
+                if let draft = store.takeDraft(for: conversationID) {
+                    inputText = draft.text
+                    pendingAttachments = draft.attachments
+                    inputFocused = true
+                }
+            }
             .sheet(isPresented: $showUsage) {
                 UsageDetailSheet(conversationID: conversationID, draft: inputText)
             }
@@ -109,6 +121,23 @@ struct ChatView: View {
                                 Label("思考强度：\(agent.thinking.displayName)", systemImage: "brain")
                             }
                             .pickerStyle(.menu)
+                        }
+                        Section("上下文") {
+                            Button("置顶的消息（\(store.pinnedMessages(in: conversationID).count)）", systemImage: "pin") {
+                                showPinned = true
+                            }
+                            if conversation.contextStartsAt != nil {
+                                Button("取消上下文起点", systemImage: "scissors") {
+                                    store.setContextStart(nil, in: conversationID)
+                                }
+                            }
+                            if let last = conversation.messages.last, !generating {
+                                Button("复制为新分支", systemImage: "arrow.triangle.branch") {
+                                    if let forkID = store.forkConversation(conversationID, at: last.id, includeMessage: true) {
+                                        store.navigate(to: forkID)
+                                    }
+                                }
+                            }
                         }
                         Section("记忆") {
                             Button("记住这次对话", systemImage: "brain.head.profile") {
@@ -239,7 +268,22 @@ struct ChatView: View {
                         EmptyChatHint(agent: agent)
                             .padding(.top, 60)
                     }
+                    if conversation.parentID != nil {
+                        ForkBanner(conversation: conversation)
+                    }
+                    let contextStartID = conversation.contextStartsAt.flatMap { start in
+                        conversation.messages.first { $0.createdAt >= start }?.id
+                    }
                     ForEach(conversation.messages) { message in
+                        if message.id == contextStartID {
+                            ContextDivider(
+                                title: "上下文从这里开始",
+                                systemImage: "scissors",
+                                actionTitle: "取消"
+                            ) {
+                                store.setContextStart(nil, in: conversationID)
+                            }
+                        }
                         MessageBubble(
                             message: message,
                             agent: agent,
@@ -248,6 +292,9 @@ struct ChatView: View {
                             isLast: message.id == conversation.messages.last?.id
                         )
                         .id(message.id)
+                        if message.id == conversation.forkPointMessageID && message.id != conversation.messages.last?.id {
+                            ContextDivider(title: "以上内容来自原对话，以下是这个分支的新内容", systemImage: "arrow.triangle.branch")
+                        }
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }

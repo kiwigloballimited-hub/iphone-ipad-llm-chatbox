@@ -298,7 +298,13 @@ extension AppStore {
 
         // 上下文占用：最近一次真实请求的输入 + 输出，加上之后新增的内容
         let draftTokens = TokenEstimator.estimate(draft)
-        if let index = conversation.messages.lastIndex(where: { $0.role == .assistant && ($0.usage?.lastInputTokens ?? 0) > 0 }),
+        let lastUsageIndex = conversation.messages.lastIndex { $0.role == .assistant && ($0.usage?.lastInputTokens ?? 0) > 0 }
+        // 手动调整过上下文（置顶 / 排除 / 起点）之后，上次的真实数字不再适用，改为整体估算
+        let editedSinceUsage: Bool = {
+            guard let edited = conversation.contextEditedAt, let index = lastUsageIndex else { return false }
+            return edited > conversation.messages[index].createdAt
+        }()
+        if !editedSinceUsage, let index = lastUsageIndex,
            let usage = conversation.messages[index].usage {
             var used = usage.lastInputTokens + usage.lastOutputTokens
             for message in conversation.messages[(index + 1)...] {

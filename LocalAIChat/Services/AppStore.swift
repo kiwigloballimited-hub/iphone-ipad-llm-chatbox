@@ -24,6 +24,10 @@ final class AppStore {
     @ObservationIgnored var maintenanceRunning: Set<UUID> = []
     /// 每个对话的内置浏览器（不保存到磁盘）
     var browserSessions: [UUID: BrowserSession] = [:]
+    /// 新对话的预填草稿（例如「编辑并分叉」）
+    @ObservationIgnored var pendingDrafts: [UUID: Draft] = [:]
+    /// 请求界面切换到的对话
+    var navigationTarget: UUID?
     /// 断线重试状态（按对话显示）
     var retryStatus: [UUID: String] = [:]
     /// 等待用户确认的操作说明（按对话）
@@ -505,8 +509,14 @@ final class AppStore {
 
     /// 组装发送给模型的消息：系统提示词（人格设定）+ 历史上下文 + 图片/视频帧
     func buildRequestMessages(conversation: Conversation, agent: Agent) -> [RequestMessage] {
-        let allHistory = conversation.messages.filter { message in
+        let validMessages = conversation.messages.filter { message in
             !message.isError && message.role != .system && !(message.role == .assistant && message.content.isBlank)
+                && !message.isExcluded
+        }
+        // 上下文起点之前的消息不发送（置顶的消息稍后单独加入）
+        let allHistory = validMessages.filter { message in
+            guard let start = conversation.contextStartsAt else { return true }
+            return message.createdAt >= start
         }
         var history = allHistory
         var summaryText: String?
@@ -529,6 +539,22 @@ final class AppStore {
             }
         }
 
+        // 部分模型模板要求第一条非系统消息必须来自用户
+        let startsAtBeginning = history.first?.id == validMessages.first?.id
+        var openings: [String] = []
+        var openingIDs = Set<UUID>()
+        while let first = history.first, first.role == .assistant {
+            if startsAtBeginning {
+                openings.append(ThinkParser.split(first.content).answer)
+                openingIDs.insert(first.id)
+            }
+            history.removeFirst()
+        }
+
+        // 不在窗口里的置顶消息，放进系统提示词
+        let windowIDs = Set(history.map(\.id)).union(openingIDs)
+        let pinnedOutside = validMessages.filter { $0.isPinned && !windowIDs.contains($0.id) }
+
         var systemParts: [String] = []
         let persona = agent.systemPrompt.trimmed
         if !persona.isEmpty { systemParts.append(persona) }
@@ -542,18 +568,22 @@ final class AppStore {
                 )
             }
         }
+        if !pinnedOutside.isEmpty {
+            let lines = pinnedOutside.map { message -> String in
+                let speaker = message.role == .user ? "用户" : "你（\(agent.name)）"
+                var text = message.role == .assistant ? ThinkParser.split(message.content).answer : message.content
+                if !message.attachments.isEmpty {
+                    text = "[附带 \(message.attachments.count) 张图片/视频帧] " + text
+                }
+                return "\(speaker)：\(text.trimmed)"
+            }
+            systemParts.append("【置顶的重要内容】\n以下是用户置顶的早期对话内容，请始终参考：\n\n" + lines.joined(separator: "\n\n"))
+        }
         if let summaryText {
             systemParts.append("【本次对话早期内容的摘要】\n\(summaryText)")
         }
 
-        // 部分模型模板要求第一条非系统消息必须来自用户
-        let startsAtBeginning = history.first?.id == allHistory.first?.id
-        var openings: [String] = []
-        while let first = history.first, first.role == .assistant {
-            openings.append(ThinkParser.split(first.content).answer)
-            history.removeFirst()
-        }
-        if !openings.isEmpty && startsAtBeginning {
+        if !openings.isEmpty {
             // 开场白并入系统提示词
             systemParts.append("（对话开始时你已经对用户说过：「\(openings.joined(separator: "\n"))」）")
         }
