@@ -89,6 +89,18 @@ extension AppStore {
                 }
 
                 guard let turn = finished else { break }
+                // 记录这一轮的用量（服务器没有返回时估算）
+                if let usage = turn.usage {
+                    apply(.usage(usage), to: replyID, in: conversationID)
+                } else {
+                    let output = turn.text + turn.reasoning + turn.toolCalls.map(\.rawArguments).joined()
+                    let estimate = TokenUsage(
+                        inputTokens: TokenEstimator.estimate(entries: requestEntries),
+                        outputTokens: TokenEstimator.estimate(output),
+                        estimated: true
+                    )
+                    apply(.usage(estimate), to: replyID, in: conversationID)
+                }
                 if turn.stopReason == "refusal" {
                     appendNote("（模型拒绝了这个请求。）", to: replyID, in: conversationID)
                     break

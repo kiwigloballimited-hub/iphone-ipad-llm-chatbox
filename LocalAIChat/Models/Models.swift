@@ -107,6 +107,8 @@ struct Agent: Codable, Identifiable, Hashable {
     var penalties: PenaltySettings?
     /// 是否允许使用内置浏览器（工具调用）（nil = 关闭）
     var browserEnabledSetting: Bool?
+    /// 手动指定的上下文窗口（token），nil = 自动检测
+    var contextWindowOverride: Int?
 
     var systemPrompt: String { persona.systemPrompt(agentName: name) }
 
@@ -244,6 +246,106 @@ struct ChatMessage: Codable, Identifiable, Hashable {
     var steps: [AgentStep]?
     /// 生成失败的原因（content 保留已生成的部分，便于从断点继续）
     var errorText: String?
+    /// 生成这条回复消耗的 token（可能包含多次请求，例如重试、工具调用）
+    var usage: TokenUsage?
+}
+
+/// Token 用量。服务器没有返回时按字数估算（estimated = true）
+struct TokenUsage: Codable, Hashable {
+    /// 输入 token（含缓存命中 / 写入的部分）
+    var inputTokens = 0
+    var outputTokens = 0
+    /// 缓存命中（读取）的输入 token
+    var cachedInputTokens = 0
+    /// 写入缓存的输入 token（Anthropic）
+    var cacheWriteTokens = 0
+    /// 最后一次请求的输入 / 输出（用于计算当前上下文占用）
+    var lastInputTokens = 0
+    var lastOutputTokens = 0
+    var requests = 0
+    var estimated = false
+
+    static let zero = TokenUsage()
+
+    var totalTokens: Int { inputTokens + outputTokens }
+
+    /// 累加另一次请求的用量
+    mutating func add(_ other: TokenUsage) {
+        inputTokens += other.inputTokens
+        outputTokens += other.outputTokens
+        cachedInputTokens += other.cachedInputTokens
+        cacheWriteTokens += other.cacheWriteTokens
+        if other.inputTokens > 0 || other.outputTokens > 0 {
+            lastInputTokens = other.lastInputTokens > 0 ? other.lastInputTokens : other.inputTokens
+            lastOutputTokens = other.lastOutputTokens > 0 ? other.lastOutputTokens : other.outputTokens
+        }
+        requests += max(other.requests, 1)
+        estimated = estimated || other.estimated
+    }
+
+    init(inputTokens: Int = 0, outputTokens: Int = 0, cachedInputTokens: Int = 0, cacheWriteTokens: Int = 0, estimated: Bool = false) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.cacheWriteTokens = cacheWriteTokens
+        self.lastInputTokens = inputTokens
+        self.lastOutputTokens = outputTokens
+        self.requests = (inputTokens > 0 || outputTokens > 0) ? 1 : 0
+        self.estimated = estimated
+    }
+
+    // 所有字段都允许缺失，方便以后增加字段
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        inputTokens = try c.decodeIfPresent(Int.self, forKey: .inputTokens) ?? 0
+        outputTokens = try c.decodeIfPresent(Int.self, forKey: .outputTokens) ?? 0
+        cachedInputTokens = try c.decodeIfPresent(Int.self, forKey: .cachedInputTokens) ?? 0
+        cacheWriteTokens = try c.decodeIfPresent(Int.self, forKey: .cacheWriteTokens) ?? 0
+        lastInputTokens = try c.decodeIfPresent(Int.self, forKey: .lastInputTokens) ?? 0
+        lastOutputTokens = try c.decodeIfPresent(Int.self, forKey: .lastOutputTokens) ?? 0
+        requests = try c.decodeIfPresent(Int.self, forKey: .requests) ?? 0
+        estimated = try c.decodeIfPresent(Bool.self, forKey: .estimated) ?? false
+    }
+}
+
+/// 模型价格（美元 / 每百万 token）
+struct ModelPrice: Codable, Hashable {
+    var input: Double
+    var output: Double
+    /// 缓存命中的输入价格，nil = 输入价格的 10%
+    var cachedInput: Double?
+    /// 写入缓存的价格，nil = 输入价格的 1.25 倍
+    var cacheWrite: Double?
+
+    static let free = ModelPrice(input: 0, output: 0, cachedInput: 0, cacheWrite: 0)
+}
+
+enum DisplayCurrency: String, Codable, CaseIterable, Identifiable {
+    case usd, gbp, cny
+
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .usd: return "$"
+        case .gbp: return "£"
+        case .cny: return "¥"
+        }
+    }
+    var displayName: String {
+        switch self {
+        case .usd: return "美元 USD"
+        case .gbp: return "英镑 GBP"
+        case .cny: return "人民币 CNY"
+        }
+    }
+    /// 默认汇率（1 美元 = ?），仅作参考，可在设置中修改
+    var defaultRate: Double {
+        switch self {
+        case .usd: return 1
+        case .gbp: return 0.76
+        case .cny: return 7.1
+        }
+    }
 }
 
 /// 助手执行的一个工具步骤，显示在消息气泡里
@@ -271,6 +373,8 @@ struct Conversation: Codable, Identifiable, Hashable {
     var summaryCoversUntil: Date?
     /// 自动记忆已处理到的消息时间（含）
     var memoryExtractedUntil: Date?
+    /// 后台整理（摘要、记忆提取）消耗的 token
+    var backgroundUsage: TokenUsage?
 
     static let defaultTitle = "新对话"
 
@@ -334,6 +438,22 @@ struct MediaSettings: Codable, Hashable {
         set { retryLimitSetting = newValue }
     }
 
+    // 费用显示
+    var currencySetting: DisplayCurrency?
+    /// 1 美元兑换所选货币的汇率（nil = 默认参考汇率）
+    var currencyRateSetting: Double?
+    var currency: DisplayCurrency {
+        get { currencySetting ?? .usd }
+        set {
+            currencySetting = newValue
+            currencyRateSetting = nil
+        }
+    }
+    var currencyRate: Double {
+        get { currencyRateSetting ?? currency.defaultRate }
+        set { currencyRateSetting = newValue }
+    }
+
     // 浏览器
     var searchEngineSetting: SearchEngine?
     var searchEngine: SearchEngine {
@@ -377,4 +497,8 @@ struct AppData: Codable {
     var conversations: [Conversation]
     var media: MediaSettings
     var memories: [MemoryItem]?
+    /// 用户自定义的模型价格（按模型名）
+    var customPrices: [String: ModelPrice]?
+    /// 自动检测到的上下文窗口（键：服务器ID|模型名）
+    var contextWindows: [String: Int]?
 }

@@ -29,6 +29,7 @@ struct ChatView: View {
     @State private var showMemoryBook = false
     @State private var showSummary = false
     @State private var showBrowser = false
+    @State private var showUsage = false
     @FocusState private var inputFocused: Bool
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -47,6 +48,13 @@ struct ChatView: View {
             }
             .navigationTitle(conversation.title)
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showUsage) {
+                UsageDetailSheet(conversationID: conversationID, draft: inputText)
+            }
+            .task(id: agent.map { "\($0.id)|\(store.effectiveModel(for: $0))|\($0.serverID?.uuidString ?? "")" }) {
+                // 打开对话时自动检测上下文窗口
+                if let agent { await store.detectContextWindowIfNeeded(for: agent) }
+            }
             .onChange(of: browser != nil) { _, hasBrowser in
                 // AI 开始使用浏览器时自动展开
                 if hasBrowser { withAnimation { showBrowser = true } }
@@ -264,6 +272,15 @@ struct ChatView: View {
 
     private func inputBar(generating: Bool) -> some View {
         VStack(spacing: 8) {
+            if let stats = store.sessionStats(for: conversationID, draft: inputText) {
+                Button {
+                    showUsage = true
+                } label: {
+                    UsageStrip(stats: stats)
+                }
+                .buttonStyle(.plain)
+            }
+
             if !pendingAttachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {

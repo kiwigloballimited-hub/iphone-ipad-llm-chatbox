@@ -18,6 +18,8 @@ struct GenerationOptions {
 enum StreamEvent {
     case content(String)
     case reasoning(String)
+    /// 服务器报告的 token 用量（通常在最后）
+    case usage(TokenUsage)
 }
 
 enum LLMError: LocalizedError {
@@ -187,7 +189,8 @@ struct LLMClient {
                     guard var http = response as? HTTPURLResponse else { throw LLMError.badResponse }
 
                     // 部分服务器 / 模型不认识思考参数或非标准的重复惩罚参数，此时去掉这些参数重试一次
-                    let usesExtensions = options.thinking != .auto || options.penalties != nil
+                    // OpenAI 兼容接口还会请求用量统计（stream_options），个别服务器不支持时去掉重试
+                    let usesExtensions = server.apiType == .openAI || options.thinking != .auto || options.penalties != nil
                     if usesExtensions && [400, 422].contains(http.statusCode) {
                         request = try buildChatRequest(messages: messages, options: options, compatibilityMode: true)
                         (bytes, response) = try await session.bytes(for: request)
@@ -232,6 +235,9 @@ struct LLMClient {
                         case .reasoning(let text):
                             continuation.yield(.reasoning(text))
                         case .finished(let turn):
+                            if let usage = turn.usage {
+                                continuation.yield(.usage(usage))
+                            }
                             if turn.stopReason == "refusal" {
                                 continuation.yield(.content(turn.text.isEmpty ? "（Claude 拒绝回答这个请求。）" : "\n\n（回答被中止：Claude 拒绝继续。）"))
                             }
@@ -247,12 +253,111 @@ struct LLMClient {
     }
 
     /// 一次性获取完整回复（用于记忆提取、摘要等后台任务）。会去掉 <think> 部分。
-    func complete(messages: [RequestMessage], options: GenerationOptions) async throws -> String {
+    func complete(messages: [RequestMessage], options: GenerationOptions) async throws -> (text: String, usage: TokenUsage) {
         var text = ""
+        var reasoning = ""
+        var usage: TokenUsage?
         for try await event in streamChat(messages: messages, options: options) {
-            if case .content(let piece) = event { text += piece }
+            switch event {
+            case .content(let piece): text += piece
+            case .reasoning(let piece): reasoning += piece
+            case .usage(let value): usage = value
+            }
         }
-        return ThinkParser.split(text).answer.trimmed
+        let finalUsage = usage ?? TokenEstimator.estimateUsage(messages: messages, output: reasoning + text)
+        return (ThinkParser.split(text).answer.trimmed, finalUsage)
+    }
+
+    // MARK: Context window
+
+    /// 尽量从服务器查询模型的上下文窗口（token）。查不到时返回 nil。
+    func detectContextWindow(model: String) async -> Int? {
+        switch server.apiType {
+        case .anthropic:
+            guard let encoded = model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                  let json = await fetchJSON(try? anthropicURL("/models/" + encoded)) else { return nil }
+            return Self.intValue(json["max_input_tokens"])
+
+        case .ollama:
+            // 正在运行的模型：实际使用的上下文长度
+            if let json = await fetchJSON(try? ollamaURL("/api/ps")),
+               let models = json["models"] as? [[String: Any]],
+               let running = models.first(where: { ($0["name"] as? String) == model || ($0["model"] as? String) == model }),
+               let length = Self.intValue(running["context_length"]) {
+                return length
+            }
+            // 模型参数里设置的 num_ctx
+            if let url = try? ollamaURL("/api/show"),
+               let body = try? JSONSerialization.data(withJSONObject: ["model": model]),
+               let json = await fetchJSON(url, method: "POST", body: body) {
+                if let parameters = json["parameters"] as? String,
+                   let line = parameters.split(separator: "\n").first(where: { $0.contains("num_ctx") }),
+                   let value = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).last.flatMap({ Int($0) }) {
+                    return value
+                }
+            }
+            return nil
+
+        case .openAI:
+            // vLLM：max_model_len；部分服务：context_length / context_window
+            if let json = await fetchJSON(try? openAIURL("/models")),
+               let models = json["data"] as? [[String: Any]],
+               let entry = models.first(where: { ($0["id"] as? String) == model }) {
+                for key in ["max_model_len", "context_length", "context_window", "max_context_length"] {
+                    if let value = Self.intValue(entry[key]) { return value }
+                }
+            }
+            var root = normalizedBase
+            if root.hasSuffix("/v1") { root.removeLast(3) }
+            // llama.cpp：/props
+            if let json = await fetchJSON(URL(string: root + "/props")),
+               let settings = json["default_generation_settings"] as? [String: Any],
+               let value = Self.intValue(settings["n_ctx"]) {
+                return value
+            }
+            // LM Studio：/api/v0/models/{id}
+            if let encoded = model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+               let json = await fetchJSON(URL(string: root + "/api/v0/models/" + encoded)) {
+                for key in ["loaded_context_length", "max_context_length"] {
+                    if let value = Self.intValue(json[key]) { return value }
+                }
+            }
+            return nil
+        }
+    }
+
+    private func fetchJSON(_ url: URL?, method: String = "GET", body: Data? = nil) async -> [String: Any]? {
+        guard let url else { return nil }
+        let request = makeRequest(url: url, method: method, body: body, timeout: 8)
+        guard let result = try? await session.data(for: request),
+              let http = result.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: result.0)) as? [String: Any]
+    }
+
+    static func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int { return int > 0 ? int : nil }
+        if let double = value as? Double { return double > 0 ? Int(double) : nil }
+        if let string = value as? String, let int = Int(string) { return int > 0 ? int : nil }
+        return nil
+    }
+
+    /// 解析 OpenAI 兼容接口的 usage 对象
+    static func parseOpenAIUsage(_ value: Any?) -> TokenUsage? {
+        guard let usage = value as? [String: Any] else { return nil }
+        let input = intValue(usage["prompt_tokens"]) ?? 0
+        let output = intValue(usage["completion_tokens"]) ?? 0
+        guard input > 0 || output > 0 else { return nil }
+        let details = usage["prompt_tokens_details"] as? [String: Any]
+        let cached = intValue(details?["cached_tokens"]) ?? intValue(usage["prompt_cache_hit_tokens"]) ?? 0
+        return TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: cached)
+    }
+
+    /// 解析 Ollama 结束时的统计
+    static func parseOllamaUsage(_ json: [String: Any]) -> TokenUsage? {
+        let input = intValue(json["prompt_eval_count"]) ?? 0
+        let output = intValue(json["eval_count"]) ?? 0
+        guard input > 0 || output > 0 else { return nil }
+        return TokenUsage(inputTokens: input, outputTokens: output)
     }
 
     /// - Parameter compatibilityMode: true 时只发送标准参数（不发送思考参数和非标准的重复惩罚参数）
@@ -287,6 +392,9 @@ struct LLMClient {
                 "temperature": options.temperature,
             ]
             if options.maxTokens > 0 { body["max_tokens"] = options.maxTokens }
+            if !compatibilityMode {
+                body["stream_options"] = ["include_usage": true]
+            }
             if let penalties = options.penalties {
                 body["frequency_penalty"] = penalties.frequencyPenalty
                 body["presence_penalty"] = penalties.presencePenalty
@@ -406,10 +514,14 @@ struct LLMClient {
             if let thinking = message["thinking"] as? String, !thinking.isEmpty { events.append(.reasoning(thinking)) }
             if let content = message["content"] as? String, !content.isEmpty { events.append(.content(content)) }
             let done = json["done"] as? Bool ?? false
+            if done, let usage = Self.parseOllamaUsage(json) { events.append(.usage(usage)) }
             return (events, done)
         }
 
-        // OpenAI 兼容
+        // OpenAI 兼容：用量统计在最后一个数据块（choices 可能为空）
+        if let usage = Self.parseOpenAIUsage(json["usage"]) {
+            events.append(.usage(usage))
+        }
         if let choices = json["choices"] as? [[String: Any]], let choice = choices.first {
             let delta = (choice["delta"] as? [String: Any]) ?? (choice["message"] as? [String: Any]) ?? [:]
             let reasoning = (delta["reasoning_content"] as? String) ?? (delta["reasoning"] as? String)
@@ -418,6 +530,6 @@ struct LLMClient {
             return (events, false)
         }
 
-        return ([], false)
+        return (events, false)
     }
 }

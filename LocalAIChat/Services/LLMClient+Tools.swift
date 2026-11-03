@@ -32,6 +32,8 @@ struct AssistantTurn {
     /// 原样回传给服务器的 assistant 消息（保留思考块、签名、工具调用等，Anthropic 要求在工具循环中原样回传）
     var rawMessage: [String: Any]
     var stopReason: String?
+    /// 服务器报告的用量（没有报告时为 nil）
+    var usage: TokenUsage?
 }
 
 /// 工具循环中的一条记录
@@ -61,7 +63,7 @@ extension LLMClient {
                     guard var http = response as? HTTPURLResponse else { throw LLMError.badResponse }
 
                     // 服务器 / 模型不认识扩展参数（思考、重复惩罚、回退等）时，只用标准参数重试一次
-                    let usesExtensions = server.apiType == .anthropic || options.thinking != .auto || options.penalties != nil
+                    let usesExtensions = server.apiType != .ollama || options.thinking != .auto || options.penalties != nil
                     if usesExtensions && [400, 422].contains(http.statusCode) {
                         request = try buildTurnRequest(entries: entries, tools: tools, options: options, compatibilityMode: true)
                         (bytes, response) = try await session.bytes(for: request)
@@ -132,6 +134,9 @@ extension LLMClient {
             body["tools"] = tools.map(Self.openAITool)
         }
         if options.maxTokens > 0 { body["max_tokens"] = options.maxTokens }
+        if !compatibilityMode {
+            body["stream_options"] = ["include_usage": true]
+        }
         if let penalties = options.penalties {
             body["frequency_penalty"] = penalties.frequencyPenalty
             body["presence_penalty"] = penalties.presencePenalty
@@ -318,6 +323,7 @@ struct TurnParser {
     private var text = ""
     private var reasoning = ""
     private var stopReason: String?
+    private var usage: TokenUsage?
 
     // OpenAI
     private var openAICalls: [Int: PartialToolCall] = [:]
@@ -364,6 +370,9 @@ struct TurnParser {
 
     private mutating func consumeOpenAI(_ json: [String: Any]) throws -> [TurnEvent] {
         try checkError(json)
+        if let value = LLMClient.parseOpenAIUsage(json["usage"]) {
+            usage = value
+        }
         guard let choices = json["choices"] as? [[String: Any]], let choice = choices.first else { return [] }
         let delta = (choice["delta"] as? [String: Any]) ?? (choice["message"] as? [String: Any]) ?? [:]
         var events: [TurnEvent] = []
@@ -425,6 +434,7 @@ struct TurnParser {
         if json["done"] as? Bool == true {
             isDone = true
             stopReason = json["done_reason"] as? String
+            usage = LLMClient.parseOllamaUsage(json)
         }
         return events
     }
@@ -435,6 +445,22 @@ struct TurnParser {
         case "error":
             let error = json["error"] as? [String: Any]
             throw LLMError.server(error?["message"] as? String ?? "未知错误")
+
+        case "message_start":
+            // 输入 token 在开始时就知道了（含缓存读取 / 写入）
+            if let message = json["message"] as? [String: Any], let raw = message["usage"] as? [String: Any] {
+                let input = LLMClient.intValue(raw["input_tokens"]) ?? 0
+                let cacheRead = LLMClient.intValue(raw["cache_read_input_tokens"]) ?? 0
+                let cacheWrite = LLMClient.intValue(raw["cache_creation_input_tokens"]) ?? 0
+                let output = LLMClient.intValue(raw["output_tokens"]) ?? 0
+                usage = TokenUsage(
+                    inputTokens: input + cacheRead + cacheWrite,
+                    outputTokens: output,
+                    cachedInputTokens: cacheRead,
+                    cacheWriteTokens: cacheWrite
+                )
+            }
+            return []
 
         case "content_block_start":
             guard let index = json["index"] as? Int, var block = json["content_block"] as? [String: Any] else { return [] }
@@ -487,6 +513,14 @@ struct TurnParser {
             if let delta = json["delta"] as? [String: Any], let reason = delta["stop_reason"] as? String {
                 stopReason = reason
             }
+            // output_tokens 是累计值
+            if let raw = json["usage"] as? [String: Any], let output = LLMClient.intValue(raw["output_tokens"]) {
+                var current = usage ?? TokenUsage()
+                current.outputTokens = output
+                current.lastOutputTokens = output
+                current.requests = 1
+                usage = current
+            }
             return []
 
         case "message_stop":
@@ -520,7 +554,7 @@ struct TurnParser {
             if usedReasoningContent && !reasoning.isEmpty {
                 raw["reasoning_content"] = reasoning
             }
-            return AssistantTurn(text: text, reasoning: reasoning, toolCalls: calls, rawMessage: raw, stopReason: stopReason)
+            return AssistantTurn(text: text, reasoning: reasoning, toolCalls: calls, rawMessage: raw, stopReason: stopReason, usage: usage)
 
         case .ollama:
             var calls: [ToolCall] = []
@@ -538,7 +572,7 @@ struct TurnParser {
             }
             var raw: [String: Any] = ["role": "assistant", "content": text]
             if !ollamaCalls.isEmpty { raw["tool_calls"] = ollamaCalls }
-            return AssistantTurn(text: text, reasoning: reasoning, toolCalls: calls, rawMessage: raw, stopReason: stopReason)
+            return AssistantTurn(text: text, reasoning: reasoning, toolCalls: calls, rawMessage: raw, stopReason: stopReason, usage: usage)
 
         case .anthropic:
             let indices = blocks.keys.sorted()
@@ -567,7 +601,7 @@ struct TurnParser {
                 }
             }
             let raw: [String: Any] = ["role": "assistant", "content": replay]
-            return AssistantTurn(text: text, reasoning: reasoning, toolCalls: calls, rawMessage: raw, stopReason: stopReason)
+            return AssistantTurn(text: text, reasoning: reasoning, toolCalls: calls, rawMessage: raw, stopReason: stopReason, usage: usage)
         }
     }
 }

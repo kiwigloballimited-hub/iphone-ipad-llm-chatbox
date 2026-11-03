@@ -45,6 +45,7 @@ Add screenshots to docs/screenshots/ and remove these comment markers.
 - **Browser assistant** – the agent can search, open pages, read long pages in chunks, click, type, choose from drop-downs, scroll and go back in a built-in browser you can watch (side by side on iPad, collapsible on iPhone). Log-in, payment, submit and send actions ask for your confirmation. Requires a model with tool calling (e.g. Qwen3, DeepSeek, Claude, gpt-oss, Llama 3.1+).
 - **Model controls** – temperature, max length, context length, thinking level (auto / off / low / medium / high), repetition / frequency / presence penalties.
 - Streaming replies, stop, regenerate, copy/select text, collapsible “thinking” for reasoning models.
+- **Usage & cost** – live token count, context-window usage and estimated cost for each conversation (real numbers from the server when available, otherwise estimated). Built-in Claude prices and DeepSeek reference prices, editable; local models count as free; show in USD, GBP or CNY.
 - **Auto-reconnect** – if the connection drops (app sent to background, Wi-Fi switch, server busy), the reply is retried automatically and continues from where it stopped; a “Continue” button appears if all retries fail.
 - All data stays on the device.
 
@@ -112,6 +113,7 @@ You need a Mac with **Xcode 16 or later** and a free Apple ID. The device must r
 - **浏览器助手**：AI 可以在内置浏览器里搜索、打开网页、分段阅读、点击、输入、选择下拉框、滚动、返回。你可以实时看到它的操作（iPad 并排显示，iPhone 可折叠）。登录、付款、提交、发送等操作会先请你确认。需要支持工具调用的模型（如 Qwen3、DeepSeek、Claude、gpt-oss、Llama 3.1+）。
 - **模型参数**：温度、最大长度、记忆的历史条数、思考强度（自动 / 关闭 / 低 / 中 / 高）、重复惩罚 / 频率惩罚 / 存在惩罚。
 - 流式输出、停止、重新生成、复制 / 选择文本，推理模型的「思考过程」可折叠查看。
+- **用量与费用**：实时显示当前对话的 token 用量、上下文占比和预估费用（优先使用服务器返回的真实数字，否则按字数估算）。内置 Claude 官方价格和 DeepSeek 参考价，可修改；本地模型免费；可以用美元、英镑或人民币显示。
 - **断线重传**：网络中断（切到后台、切换 Wi-Fi、服务器繁忙等）时自动重试，并从中断处接着写；重试都失败后可以点「从断点继续」。
 - 所有数据只保存在本机。
 
@@ -182,6 +184,7 @@ LocalAIChat/
 │   ├── LLMClient.swift                 Server APIs (streaming) · 服务器接口（流式）
 │   ├── LLMClient+Tools.swift           Tool calling for OpenAI / Ollama / Anthropic · 工具调用
 │   ├── RetryPolicy.swift               Auto-reconnect & resume · 断线重传
+│   ├── UsageTracking.swift             Tokens, context & cost · 用量、上下文与费用
 │   ├── BrowserSession.swift            Built-in browser (WKWebView) · 内置浏览器
 │   ├── BrowserTools.swift              Browser tools for the model · 浏览器工具
 │   ├── ImageProcessor.swift            Image compression · 图片压缩

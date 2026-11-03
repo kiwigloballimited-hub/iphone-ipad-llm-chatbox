@@ -45,7 +45,7 @@ extension AppStore {
               let agent = agent(id: conversation.agentID) else { return [] }
         let messages = Self.usableMessages(conversation.messages)
         guard !messages.isEmpty else { return [] }
-        return try await requestMemories(agent: agent, messages: messages)
+        return try await requestMemories(agent: agent, messages: messages, conversationID: conversationID)
     }
 
     /// 保存用户确认后的记忆
@@ -105,13 +105,14 @@ extension AppStore {
         prompt += "【新的对话内容】\n" + Self.transcript(chunk, agentName: agent.name, maxCharacters: 16000)
 
         do {
-            let summary = try await client.complete(
+            let (summary, usage) = try await client.complete(
                 messages: [
                     RequestMessage(role: .system, text: "你是一个擅长归纳总结的助手。"),
                     RequestMessage(role: .user, text: prompt),
                 ],
                 options: options
             )
+            addBackgroundUsage(usage, to: conversationID)
             guard !summary.isEmpty, let i = conversationIndex(conversationID) else { return }
             conversations[i].summary = summary
             conversations[i].summaryCoversUntil = lastCovered.createdAt
@@ -136,7 +137,7 @@ extension AppStore {
 
         maintenanceStatus[conversationID] = "正在整理长期记忆…"
         do {
-            let items = try await requestMemories(agent: agent, messages: pending)
+            let items = try await requestMemories(agent: agent, messages: pending, conversationID: conversationID)
             for text in items {
                 addMemory(text, to: agent.id, source: .auto, conversationID: conversationID)
             }
@@ -151,7 +152,7 @@ extension AppStore {
 
     // MARK: - Helpers
 
-    private func requestMemories(agent: Agent, messages: [ChatMessage]) async throws -> [String] {
+    private func requestMemories(agent: Agent, messages: [ChatMessage], conversationID: UUID?) async throws -> [String] {
         guard case let (client, options)? = utilityClient(for: agent) else {
             throw LLMError.server("还没有配置服务器或模型。")
         }
@@ -174,13 +175,14 @@ extension AppStore {
         \(Self.transcript(messages, agentName: agent.name, maxCharacters: 12000))
         """
 
-        let reply = try await client.complete(
+        let (reply, usage) = try await client.complete(
             messages: [
                 RequestMessage(role: .system, text: "你是一个负责整理长期记忆的助手，只输出记忆列表。"),
                 RequestMessage(role: .user, text: prompt),
             ],
             options: options
         )
+        if let conversationID { addBackgroundUsage(usage, to: conversationID) }
         let existingSet = Set(existing.map(\.text))
         return Self.parseMemoryLines(reply).filter { !existingSet.contains($0) }
     }

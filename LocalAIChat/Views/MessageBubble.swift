@@ -79,7 +79,7 @@ struct MessageBubble: View {
                 }
 
                 if !isUser, let model = message.modelName, !isStreaming, !answer.isEmpty {
-                    Text(model)
+                    Text([model, store.usageCaption(for: message, agent: agent)].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption2.monospaced())
                         .foregroundStyle(.tertiary)
                 }

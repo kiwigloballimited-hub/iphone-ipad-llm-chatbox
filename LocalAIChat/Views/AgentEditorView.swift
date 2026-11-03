@@ -255,6 +255,12 @@ struct AgentEditorView: View {
                         .monospacedDigit()
                 }
             }
+            Picker("上下文窗口", selection: $agent.contextWindowOverride) {
+                Text("自动检测").tag(Int?.none)
+                ForEach(contextWindowPresets, id: \.value) { preset in
+                    Text(preset.label).tag(Optional(preset.value))
+                }
+            }
             Stepper(value: $agent.contextMessageLimit, in: 0...200, step: 2) {
                 HStack {
                     Text("记忆的历史消息")

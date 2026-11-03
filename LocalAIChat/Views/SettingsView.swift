@@ -104,6 +104,32 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("显示货币", selection: $store.media.currency) {
+                        ForEach(DisplayCurrency.allCases) { currency in
+                            Text(currency.displayName).tag(currency)
+                        }
+                    }
+                    if store.media.currency != .usd {
+                        HStack {
+                            Text("汇率：1 美元 =")
+                            Spacer()
+                            TextField("汇率", value: $store.media.currencyRate, format: .number.precision(.fractionLength(0...4)))
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 100)
+                            Text(store.media.currency.symbol)
+                        }
+                    }
+                    NavigationLink("模型价格") {
+                        ModelPricesView()
+                    }
+                } header: {
+                    Text("费用估算")
+                } footer: {
+                    Text("聊天输入框上方会显示当前对话的 token 用量、上下文占比和预估费用，点一下可以查看详情。默认汇率仅供参考，请按实际汇率修改。")
+                }
+
+                Section {
                     Toggle("断线自动重试", isOn: $store.media.autoRetry)
                     if store.media.autoRetry {
                         Stepper("最多重试 \(store.media.retryLimit) 次", value: $store.media.retryLimit, in: 1...5)

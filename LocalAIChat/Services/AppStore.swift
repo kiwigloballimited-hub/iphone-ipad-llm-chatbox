@@ -12,6 +12,11 @@ final class AppStore {
     var media = MediaSettings()
     /// 所有助手的长期记忆
     var memories: [MemoryItem] = []
+    /// 用户自定义的模型价格（美元 / 百万 token）
+    var customPrices: [String: ModelPrice] = [:]
+    /// 自动检测到的上下文窗口（键：服务器ID|模型名）
+    var contextWindows: [String: Int] = [:]
+    @ObservationIgnored var contextDetectionAttempted: Set<String> = []
     /// 后台整理（摘要 / 记忆）状态，按对话显示
     var maintenanceStatus: [UUID: String] = [:]
 
@@ -50,6 +55,8 @@ final class AppStore {
             conversations = decoded.conversations
             media = decoded.media
             memories = decoded.memories ?? []
+            customPrices = decoded.customPrices ?? [:]
+            contextWindows = decoded.contextWindows ?? [:]
         } catch {
             // 解析失败时保留一份备份，避免数据被覆盖丢失
             let backup = Storage.baseDirectory.appendingPathComponent("data-backup-\(Int(Date().timeIntervalSince1970)).json")
@@ -71,7 +78,7 @@ final class AppStore {
     func saveNow() {
         pendingSave?.cancel()
         pendingSave = nil
-        let snapshot = AppData(servers: servers, agents: agents, conversations: conversations, media: media, memories: memories)
+        let snapshot = AppData(servers: servers, agents: agents, conversations: conversations, media: media, memories: memories, customPrices: customPrices, contextWindows: contextWindows)
         do {
             let encoder = JSONEncoder()
             let data = try encoder.encode(snapshot)
@@ -373,12 +380,21 @@ final class AppStore {
         var messages = initialMessages
         var attempt = 0
         while true {
+            // 记录这次请求开始前的内容，服务器没有返回用量时用来估算
+            let before = messageText(replyID, in: conversationID)
+            var receivedUsage = false
             do {
                 for try await event in client.streamChat(messages: messages, options: options) {
                     if retryStatus[conversationID] != nil { retryStatus[conversationID] = nil }
+                    if case .usage = event { receivedUsage = true }
                     apply(event, to: replyID, in: conversationID)
                 }
                 retryStatus[conversationID] = nil
+                if !receivedUsage {
+                    let after = messageText(replyID, in: conversationID)
+                    let output = String(after.content.dropFirst(before.content.count)) + String(after.reasoning.dropFirst(before.reasoning.count))
+                    apply(.usage(TokenEstimator.estimateUsage(messages: messages, output: output)), to: replyID, in: conversationID)
+                }
                 return
             } catch {
                 if RetryPolicy.isCancellation(error) {
@@ -392,6 +408,12 @@ final class AppStore {
                 messages = prepareRetry(replyID: replyID, conversationID: conversationID, base: baseMessages)
             }
         }
+    }
+
+    func messageText(_ messageID: UUID, in conversationID: UUID) -> (content: String, reasoning: String) {
+        guard let ci = conversationIndex(conversationID),
+              let message = conversations[ci].messages.first(where: { $0.id == messageID }) else { return ("", "") }
+        return (message.content, message.reasoning)
     }
 
     /// 判断是否应该重试；需要时显示状态并等待。返回 false 表示不再重试。
@@ -436,6 +458,10 @@ final class AppStore {
         switch event {
         case .content(let text): conversations[ci].messages[mi].content += text
         case .reasoning(let text): conversations[ci].messages[mi].reasoning += text
+        case .usage(let usage):
+            var current = conversations[ci].messages[mi].usage ?? TokenUsage()
+            current.add(usage)
+            conversations[ci].messages[mi].usage = current
         }
     }
 
@@ -462,6 +488,10 @@ final class AppStore {
             if succeeded {
                 // 更新滚动摘要、自动提取长期记忆（按需，在后台进行）
                 scheduleMaintenance(conversationID)
+                // 模型已加载，再检测一次上下文窗口（Ollama 只有加载后才能查到实际值）
+                if let agent = agent(id: conversations[ci].agentID) {
+                    Task { [weak self] in await self?.detectContextWindowIfNeeded(for: agent, force: true) }
+                }
             }
         }
         save()
@@ -474,7 +504,7 @@ final class AppStore {
     }
 
     /// 组装发送给模型的消息：系统提示词（人格设定）+ 历史上下文 + 图片/视频帧
-    private func buildRequestMessages(conversation: Conversation, agent: Agent) -> [RequestMessage] {
+    func buildRequestMessages(conversation: Conversation, agent: Agent) -> [RequestMessage] {
         let allHistory = conversation.messages.filter { message in
             !message.isError && message.role != .system && !(message.role == .assistant && message.content.isBlank)
         }
