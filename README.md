@@ -45,6 +45,7 @@ Add screenshots to docs/screenshots/ and remove these comment markers.
 - **Browser assistant** – the agent can search, open pages, read long pages in chunks, click, type, choose from drop-downs, scroll and go back in a built-in browser you can watch (side by side on iPad, collapsible on iPhone). Log-in, payment, submit and send actions ask for your confirmation. Requires a model with tool calling (e.g. Qwen3, DeepSeek, Claude, gpt-oss, Llama 3.1+).
 - **Model controls** – temperature, max length, context length, thinking level (auto / off / low / medium / high), repetition / frequency / presence penalties.
 - Streaming replies, stop, regenerate, copy/select text, collapsible “thinking” for reasoning models.
+- **iPad: Apple Pencil & drag and drop** – circle or mark up any image with Apple Pencil (the annotated image plus a zoomed crop of the circled area is attached), or handwrite on a blank canvas and turn it into a prompt with on-device text recognition. Drag multiple images, PDFs, text files, videos or links from Files, Safari and other apps straight into the chat; PDF text is extracted as context and scanned PDFs are converted to page images. Scribble (writing directly into the message box) works too.
 - **iPhone integration** – Siri & Shortcuts actions (*Ask agent* returns the answer directly; *Voice ask*, *New chat*, *Send to agent* with text/images), Action Button one-press voice questions, voice input, Home Screen / Lock Screen widgets, Dynamic Island & Live Activities showing reply / browser-task progress, and a Shortcuts-based Share Sheet flow (see *Settings › Siri, Shortcuts & Action Button* in the app).
 - **Context engineering** – long-press any message to *pin* it (always sent to the model, never dropped by the history window), *exclude* it (kept on screen but not sent), *start a new context here*, *fork* a new conversation from that point, or *edit & fork* one of your own messages to try a different prompt.
 - **Usage & cost** – live token count, context-window usage and estimated cost for each conversation (real numbers from the server when available, otherwise estimated). Built-in Claude prices and DeepSeek reference prices, editable; local models count as free; show in USD, GBP or CNY.
@@ -114,6 +115,7 @@ You need a Mac with **Xcode 16 or later** and a free Apple ID. The device must r
 - **浏览器助手**：AI 可以在内置浏览器里搜索、打开网页、分段阅读、点击、输入、选择下拉框、滚动、返回。你可以实时看到它的操作（iPad 并排显示，iPhone 可折叠）。登录、付款、提交、发送等操作会先请你确认。需要支持工具调用的模型（如 Qwen3、DeepSeek、Claude、gpt-oss、Llama 3.1+）。
 - **模型参数**：温度、最大长度、记忆的历史条数、思考强度（自动 / 关闭 / 低 / 中 / 高）、重复惩罚 / 频率惩罚 / 存在惩罚。
 - 流式输出、停止、重新生成、复制 / 选择文本，推理模型的「思考过程」可折叠查看。
+- **iPad：Apple Pencil 与拖拽**：用 Apple Pencil 在任意图片上圈选 / 标注（会附上标注后的图片和圈选区域放大图），或在空白画板上手写，用本机文字识别转成提示词；从「文件」、Safari 等 App 把多张图片、PDF、文本文件、视频、链接直接拖进聊天区域，PDF 会提取文字作为上下文，扫描版 PDF 会转成页面图片。也可以直接用 Pencil 在输入框里手写（随手写）。
 - **iPhone 集成**：Siri 与快捷指令（「问助手」直接返回回答、「语音提问」「新对话」「发送给助手」可带文字和图片）、操作按钮一键语音提问、语音输入、桌面 / 锁屏小组件、灵动岛与实时活动显示回复和浏览器任务进度，以及通过快捷指令实现的分享菜单发送（App 内「设置 › Siri、快捷指令与操作按钮」有详细步骤）。
 - **上下文工程**：长按任意消息可以「置顶到上下文」（始终发送给模型，不会被历史窗口丢弃）、「不发送给模型」（保留显示但不发送）、「从这里开始新的上下文」、「从这里分叉」出新对话；自己发的消息还可以「编辑并分叉」，方便比较不同提示词的效果。
 - **用量与费用**：实时显示当前对话的 token 用量、上下文占比和预估费用（优先使用服务器返回的真实数字，否则按字数估算）。内置 Claude 官方价格和 DeepSeek 参考价，可修改；本地模型免费；可以用美元、英镑或人民币显示。
@@ -192,7 +194,8 @@ LocalAIChat/
 │   ├── BrowserTools.swift              Browser tools for the model · 浏览器工具
 │   ├── ImageProcessor.swift            Image compression · 图片压缩
 │   ├── VideoFrameExtractor.swift       Video frame extraction · 视频抽帧
-│   └── MediaImport.swift               Photos / Files import · 相册与文件导入
+│   ├── MediaImport.swift               Photos / Files import · 相册与文件导入
+│   └── DocumentImporter.swift          PDF & text documents · PDF 与文本文档
 ├── Intents/AppIntents.swift            Siri & Shortcuts actions · Siri 与快捷指令
 └── Views/                              SwiftUI views · 界面
 LocalAIChatWidgets/                     Widgets, Live Activity & Dynamic Island · 小组件与灵动岛
