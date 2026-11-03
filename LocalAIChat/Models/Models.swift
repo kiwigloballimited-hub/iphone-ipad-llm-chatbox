@@ -470,6 +470,19 @@ struct MediaSettings: Codable, Hashable {
         set { currencyRateSetting = newValue }
     }
 
+    // iPhone 集成
+    var liveActivitiesSetting: Bool?
+    /// 语音识别语言，例如 zh-CN / en-GB
+    var voiceLocaleSetting: String?
+    var liveActivities: Bool {
+        get { liveActivitiesSetting ?? true }
+        set { liveActivitiesSetting = newValue }
+    }
+    var voiceLocale: String {
+        get { voiceLocaleSetting ?? "zh-CN" }
+        set { voiceLocaleSetting = newValue }
+    }
+
     // 浏览器
     var searchEngineSetting: SearchEngine?
     var searchEngine: SearchEngine {

@@ -6,6 +6,9 @@ import SwiftUI
 @MainActor
 @Observable
 final class AppStore {
+    /// 整个 App（包括 Siri / 快捷指令）共用同一份数据
+    static let shared = AppStore()
+
     var servers: [ServerConfig] = []
     var agents: [Agent] = []
     var conversations: [Conversation] = []
@@ -28,13 +31,15 @@ final class AppStore {
     @ObservationIgnored var pendingDrafts: [UUID: Draft] = [:]
     /// 请求界面切换到的对话
     var navigationTarget: UUID?
+    /// 请求在某个对话中打开语音输入（操作按钮 / Siri / 小组件）
+    var voiceRequest: UUID?
     /// 断线重试状态（按对话显示）
     var retryStatus: [UUID: String] = [:]
     /// 等待用户确认的操作说明（按对话）
     var pendingConfirmations: [UUID: String] = [:]
     @ObservationIgnored var confirmationContinuations: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
-    @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored var tasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
     init() {
@@ -153,6 +158,7 @@ final class AppStore {
             agents.append(agent)
         }
         save()
+        refreshAppShortcuts()
     }
 
     func setThinking(_ level: ThinkingLevel, for agentID: UUID) {
@@ -179,6 +185,7 @@ final class AppStore {
         memories.removeAll { $0.agentID == id }
         agents.removeAll { $0.id == id }
         save()
+        refreshAppShortcuts()
     }
 
     func moveAgents(from source: IndexSet, to destination: Int) {
@@ -339,6 +346,9 @@ final class AppStore {
         let client = LLMClient(server: server)
         let options = GenerationOptions(model: model, temperature: agent.temperature, maxTokens: agent.maxTokens, thinking: agent.thinking, penalties: agent.penalties)
         generating.insert(conversationID)
+        if media.liveActivities {
+            LiveActivityManager.shared.start(conversationID: conversationID, agent: agent, title: conversations[ci].title)
+        }
 
         if agent.browserEnabled {
             // 浏览器助手：工具调用循环
@@ -429,6 +439,7 @@ final class AppStore {
         attempt += 1
         let seconds = RetryPolicy.delaySeconds(forAttempt: attempt)
         retryStatus[conversationID] = "连接中断，\(seconds) 秒后重试（第 \(attempt)/\(media.retryLimit) 次）…"
+        LiveActivityManager.shared.update(conversationID, phase: .retrying, detail: "第 \(attempt) 次重试", force: true)
         do {
             try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
         } catch {
@@ -460,8 +471,22 @@ final class AppStore {
         guard let ci = conversationIndex(conversationID),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID }) else { return }
         switch event {
-        case .content(let text): conversations[ci].messages[mi].content += text
-        case .reasoning(let text): conversations[ci].messages[mi].reasoning += text
+        case .content(let text):
+            conversations[ci].messages[mi].content += text
+            if LiveActivityManager.shared.shouldUpdate(conversationID) {
+                let message = conversations[ci].messages[mi]
+                LiveActivityManager.shared.update(
+                    conversationID,
+                    phase: .writing,
+                    detail: ThinkParser.split(message.content).answer,
+                    tokens: TokenEstimator.estimate(message.content + message.reasoning)
+                )
+            }
+        case .reasoning(let text):
+            conversations[ci].messages[mi].reasoning += text
+            if LiveActivityManager.shared.shouldUpdate(conversationID) {
+                LiveActivityManager.shared.update(conversationID, phase: .thinking)
+            }
         case .usage(let usage):
             var current = conversations[ci].messages[mi].usage ?? TokenUsage()
             current.add(usage)
@@ -485,6 +510,12 @@ final class AppStore {
            let mi = conversations[ci].messages.firstIndex(where: { $0.id == replyID }) {
             let message = conversations[ci].messages[mi]
             let succeeded = !message.isError && !message.content.isBlank
+            LiveActivityManager.shared.end(
+                conversationID,
+                success: succeeded,
+                preview: succeeded ? ThinkParser.split(message.content).answer : (message.errorText ?? "已停止"),
+                tokens: message.usage?.outputTokens ?? TokenEstimator.estimate(message.content + message.reasoning)
+            )
             if message.content.isBlank && message.reasoning.isBlank && !message.isError {
                 conversations[ci].messages[mi].content = "（已停止）"
             }

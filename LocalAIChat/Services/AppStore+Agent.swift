@@ -196,6 +196,7 @@ extension AppStore {
     private func addStep(_ step: AgentStep, to messageID: UUID, in conversationID: UUID) -> UUID {
         guard case let (ci, mi)? = messageIndices(messageID, conversationID) else { return step.id }
         conversations[ci].messages[mi].steps = (conversations[ci].messages[mi].steps ?? []) + [step]
+        LiveActivityManager.shared.update(conversationID, phase: .browsing, detail: step.title, force: true)
         return step.id
     }
 

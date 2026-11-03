@@ -104,6 +104,22 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("灵动岛 / 实时活动显示进度", isOn: $store.media.liveActivities)
+                    Picker("语音识别语言", selection: $store.media.voiceLocale) {
+                        ForEach(SpeechRecognizer.languages, id: \.id) { language in
+                            Text(language.name).tag(language.id)
+                        }
+                    }
+                    NavigationLink("Siri、快捷指令与操作按钮") {
+                        IntegrationGuideView()
+                    }
+                } header: {
+                    Text("iPhone 集成")
+                } footer: {
+                    Text("生成回复时，切到其他 App 也能在灵动岛和锁屏上看到进度。")
+                }
+
+                Section {
                     Picker("显示货币", selection: $store.media.currency) {
                         ForEach(DisplayCurrency.allCases) { currency in
                             Text(currency.displayName).tag(currency)

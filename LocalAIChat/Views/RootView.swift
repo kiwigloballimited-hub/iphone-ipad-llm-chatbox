@@ -31,14 +31,22 @@ struct RootView: View {
             selectedConversationID = nil
         }
         .onChange(of: store.navigationTarget) { _, target in
-            // 例如新建分支后，跳转到新对话
-            guard let target, let conversation = store.conversation(id: target) else { return }
-            if selectedAgentID != conversation.agentID {
-                selectedAgentID = conversation.agentID
-            }
-            selectedConversationID = target
-            DispatchQueue.main.async { store.navigationTarget = nil }
+            // 例如新建分支、Siri / 小组件打开对话后，跳转过去
+            open(target)
         }
+        .onAppear {
+            // App 由 Siri / 快捷指令 / 小组件启动时
+            open(store.navigationTarget)
+        }
+    }
+
+    private func open(_ target: UUID?) {
+        guard let target, let conversation = store.conversation(id: target) else { return }
+        if selectedAgentID != conversation.agentID {
+            selectedAgentID = conversation.agentID
+        }
+        selectedConversationID = target
+        DispatchQueue.main.async { store.navigationTarget = nil }
     }
 }
 

@@ -10,6 +10,23 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>语音提问时需要使用麦克风。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>把你说的话转换成文字，发送给 AI 助手。</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>LocalAIChat</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>localaichat</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>需要访问本地网络，以连接你在局域网中运行的 AI 服务器（如 Ollama、LM Studio）。</string>
 </dict>

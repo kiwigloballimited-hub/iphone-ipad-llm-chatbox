@@ -31,6 +31,7 @@ struct ChatView: View {
     @State private var showBrowser = false
     @State private var showUsage = false
     @State private var showPinned = false
+    @State private var showVoice = false
     @FocusState private var inputFocused: Bool
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -52,7 +53,26 @@ struct ChatView: View {
             .sheet(isPresented: $showPinned) {
                 PinnedMessagesSheet(conversationID: conversationID)
             }
+            .sheet(isPresented: $showVoice) {
+                VoiceInputSheet(agent: agent) { text in
+                    store.send(text: text, attachments: pendingAttachments, in: conversationID)
+                    pendingAttachments = []
+                } onInsert: { text in
+                    inputText = inputText.isBlank ? text : inputText + " " + text
+                }
+            }
+            .onChange(of: store.voiceRequest) { _, request in
+                // 操作按钮 / Siri / 小组件请求语音提问
+                if request == conversationID {
+                    store.voiceRequest = nil
+                    showVoice = true
+                }
+            }
             .onAppear {
+                if store.voiceRequest == conversationID {
+                    store.voiceRequest = nil
+                    showVoice = true
+                }
                 // 「编辑并分叉」带过来的草稿
                 if let draft = store.takeDraft(for: conversationID) {
                     inputText = draft.text
@@ -393,6 +413,16 @@ struct ChatView: View {
                 }
                 .disabled(processingText != nil)
                 .accessibilityLabel("添加图片或视频")
+
+                Button {
+                    showVoice = true
+                } label: {
+                    Image(systemName: "mic.circle.fill")
+                        .font(.system(size: 30))
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .disabled(generating)
+                .accessibilityLabel("语音输入")
 
                 TextField("输入消息…", text: $inputText, axis: .vertical)
                     .lineLimit(1...6)
