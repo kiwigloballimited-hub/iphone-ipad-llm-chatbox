@@ -1,6 +1,5 @@
 import AppIntents
 import Foundation
-import UniformTypeIdentifiers
 
 // MARK: - 助手（供 Siri / 快捷指令选择）
 
@@ -124,7 +123,7 @@ struct SendToAgentIntent: AppIntent {
     @Parameter(title: "文字")
     var text: String?
 
-    @Parameter(title: "图片", supportedContentTypes: [.image])
+    @Parameter(title: "图片", supportedTypeIdentifiers: ["public.image"])
     var images: [IntentFile]?
 
     @Parameter(title: "要求", description: "例如：翻译成中文、总结要点、解释这张图片")
