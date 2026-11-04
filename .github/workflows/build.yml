@@ -27,3 +27,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Check translations (English, Traditional Chinese)
+        run: |
+          xcodebuild -exportLocalizations \
+            -project LocalAIChat.xcodeproj \
+            -localizationPath build/loc \
+            -exportLanguage en \
+            -exportLanguage zh-Hant \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO > export.log 2>&1 || { tail -40 export.log; exit 1; }
+          python3 .github/scripts/loc_report.py build/loc

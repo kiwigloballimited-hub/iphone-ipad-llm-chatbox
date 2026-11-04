@@ -73,9 +73,9 @@ struct MemoryListView: View {
 
     static func sourceLabel(_ source: MemoryItem.Source) -> String {
         switch source {
-        case .manual: return "手动添加"
-        case .extracted: return "从对话中记住"
-        case .auto: return "自动记住"
+        case .manual: return String(localized: "手动添加")
+        case .extracted: return String(localized: "从对话中记住")
+        case .auto: return String(localized: "自动记住")
         }
     }
 }

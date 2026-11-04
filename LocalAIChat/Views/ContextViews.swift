@@ -13,7 +13,7 @@ struct ForkBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("分支对话")
                     .font(.caption.weight(.semibold))
-                Text("来自「\(conversation.parentTitle ?? "原对话")」" + (parentExists ? "" : "（原对话已删除）"))
+                Text("来自「\(conversation.parentTitle ?? String(localized: "原对话"))」" + (parentExists ? "" : String(localized: "（原对话已删除）")))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -71,7 +71,7 @@ struct PinnedMessagesSheet: View {
 
     var body: some View {
         let pinned = store.pinnedMessages(in: conversationID)
-        let agentName = store.conversation(id: conversationID).flatMap { store.agent(id: $0.agentID) }?.name ?? "助手"
+        let agentName = store.conversation(id: conversationID).flatMap { store.agent(id: $0.agentID) }?.name ?? String(localized: "助手")
 
         NavigationStack {
             List {
@@ -85,7 +85,7 @@ struct PinnedMessagesSheet: View {
                     Section {
                         ForEach(pinned) { message in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(message.role == .user ? "你" : agentName)
+                                Text(message.role == .user ? String(localized: "你") : agentName)
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                 Text(ThinkParser.split(message.content).answer)

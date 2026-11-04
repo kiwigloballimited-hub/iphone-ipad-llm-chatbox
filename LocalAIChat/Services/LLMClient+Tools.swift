@@ -444,7 +444,7 @@ struct TurnParser {
         switch type {
         case "error":
             let error = json["error"] as? [String: Any]
-            throw LLMError.server(error?["message"] as? String ?? "未知错误")
+            throw LLMError.server(error?["message"] as? String ?? String(localized: "未知错误"))
 
         case "message_start":
             // 输入 token 在开始时就知道了（含缓存读取 / 写入）

@@ -157,10 +157,10 @@ enum PriceSource {
 
     var label: String {
         switch self {
-        case .custom: return "自定义价格"
-        case .builtIn(let reference): return reference ? "内置参考价（请核对）" : "内置官方价格"
-        case .local: return "本地模型，免费"
-        case .unknown: return "未设置价格"
+        case .custom: return String(localized: "自定义价格")
+        case .builtIn(let reference): return reference ? String(localized: "内置参考价（请核对）") : String(localized: "内置官方价格")
+        case .local: return String(localized: "本地模型，免费")
+        case .unknown: return String(localized: "未设置价格")
         }
     }
 }
@@ -230,10 +230,10 @@ extension AppStore {
     }
 
     func contextWindow(for agent: Agent) -> (value: Int?, source: String) {
-        if let manual = agent.contextWindowOverride { return (manual, "手动设置") }
-        if let key = contextKey(for: agent), let detected = contextWindows[key] { return (detected, "自动检测") }
-        if let known = PriceBook.knownContextWindow(effectiveModel(for: agent)) { return (known, "参考值") }
-        return (nil, "未知")
+        if let manual = agent.contextWindowOverride { return (manual, String(localized: "手动设置")) }
+        if let key = contextKey(for: agent), let detected = contextWindows[key] { return (detected, String(localized: "自动检测")) }
+        if let known = PriceBook.knownContextWindow(effectiveModel(for: agent)) { return (known, String(localized: "参考值")) }
+        return (nil, String(localized: "未知"))
     }
 
     /// 自动检测上下文窗口。force = true 时即使之前检测失败也再试一次（例如 Ollama 模型加载之后）

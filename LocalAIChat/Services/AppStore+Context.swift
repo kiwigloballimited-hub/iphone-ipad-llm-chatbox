@@ -64,7 +64,7 @@ extension AppStore {
         }
 
         var fork = Conversation(agentID: source.agentID)
-        fork.title = source.title + " · 分支"
+        fork.title = source.title + String(localized: " · 分支")
         fork.messages = copies
         fork.parentID = source.id
         fork.parentTitle = source.title

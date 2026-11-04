@@ -31,22 +31,22 @@ enum LLMError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL(let url):
-            return "服务器地址无效：\(url)"
+            return String(localized: "服务器地址无效：\(url)")
         case .http(let code, let body):
             let detail = LLMError.extractMessage(from: body) ?? body
             var hint = ""
             switch code {
-            case 401, 403: hint = "\n\n提示：API Key 无效或没有权限，请在服务器设置中检查 API Key。"
-            case 402: hint = "\n\n提示：账户余额不足。"
-            case 429: hint = "\n\n提示：请求太频繁或额度已用完，请稍后再试。"
-            case 529: hint = "\n\n提示：服务器繁忙，请稍后再试。"
+            case 401, 403: hint = String(localized: "\n\n提示：API Key 无效或没有权限，请在服务器设置中检查 API Key。")
+            case 402: hint = String(localized: "\n\n提示：账户余额不足。")
+            case 429: hint = String(localized: "\n\n提示：请求太频繁或额度已用完，请稍后再试。")
+            case 529: hint = String(localized: "\n\n提示：服务器繁忙，请稍后再试。")
             default: break
             }
-            return "服务器返回错误 \(code)：\(detail.prefix(500))" + hint
+            return String(localized: "服务器返回错误 \(code)：\(String(detail.prefix(500)))") + hint
         case .server(let message):
-            return "服务器错误：\(message)"
+            return String(localized: "服务器错误：\(message)")
         case .badResponse:
-            return "无法解析服务器的响应。"
+            return String(localized: "无法解析服务器的响应。")
         }
     }
 
@@ -64,13 +64,13 @@ enum LLMError: LocalizedError {
         if let urlError = error as? URLError {
             switch urlError.code {
             case .cannotConnectToHost, .cannotFindHost:
-                return "无法连接到服务器。请检查：\n1. 地址和端口是否正确；\n2. 服务器是否允许局域网访问（Ollama 需设置环境变量 OLLAMA_HOST=0.0.0.0，LM Studio 需开启「在局域网中提供服务」）；\n3. 电脑防火墙是否放行该端口。"
+                return String(localized: "无法连接到服务器。请检查：\n1. 地址和端口是否正确；\n2. 服务器是否允许局域网访问（Ollama 需设置环境变量 OLLAMA_HOST=0.0.0.0，LM Studio 需开启「在局域网中提供服务」）；\n3. 电脑防火墙是否放行该端口。")
             case .notConnectedToInternet, .networkConnectionLost:
-                return "网络不可用。请确认设备已连接到与服务器相同的 Wi-Fi，并在「设置 › 隐私与安全性 › 本地网络」中允许本应用访问。"
+                return String(localized: "网络不可用。请确认设备已连接到与服务器相同的 Wi-Fi，并在「设置 › 隐私与安全性 › 本地网络」中允许本应用访问。")
             case .timedOut:
-                return "请求超时。模型可能仍在加载，或者图片/视频帧太多，请稍后重试或减少附件。"
+                return String(localized: "请求超时。模型可能仍在加载，或者图片/视频帧太多，请稍后重试或减少附件。")
             case .appTransportSecurityRequiresSecureConnection:
-                return "系统阻止了不安全的 HTTP 连接。"
+                return String(localized: "系统阻止了不安全的 HTTP 连接。")
             default:
                 return urlError.localizedDescription
             }
@@ -239,7 +239,7 @@ struct LLMClient {
                                 continuation.yield(.usage(usage))
                             }
                             if turn.stopReason == "refusal" {
-                                continuation.yield(.content(turn.text.isEmpty ? "（Claude 拒绝回答这个请求。）" : "\n\n（回答被中止：Claude 拒绝继续。）"))
+                                continuation.yield(.content(turn.text.isEmpty ? String(localized: "（Claude 拒绝回答这个请求。）") : String(localized: "\n\n（回答被中止：Claude 拒绝继续。）")))
                             }
                         }
                     }

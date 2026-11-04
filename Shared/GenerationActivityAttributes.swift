@@ -30,12 +30,12 @@ struct GenerationActivityAttributes: ActivityAttributes {
 extension GenerationActivityAttributes.Phase {
     var label: String {
         switch self {
-        case .thinking: return "思考中"
-        case .writing: return "正在回复"
-        case .browsing: return "正在浏览网页"
-        case .retrying: return "重新连接中"
-        case .done: return "已完成"
-        case .failed: return "未完成"
+        case .thinking: return String(localized: "思考中")
+        case .writing: return String(localized: "正在回复")
+        case .browsing: return String(localized: "正在浏览网页")
+        case .retrying: return String(localized: "重新连接中")
+        case .done: return String(localized: "已完成")
+        case .failed: return String(localized: "未完成")
         }
     }
 

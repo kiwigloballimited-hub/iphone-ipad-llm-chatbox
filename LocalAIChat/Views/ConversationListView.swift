@@ -21,7 +21,7 @@ struct ConversationListView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(agent.name).font(.title3.bold())
                             let model = store.effectiveModel(for: agent)
-                            Text(model.isEmpty ? "未设置模型" : model)
+                            Text(model.isEmpty ? String(localized: "未设置模型") : model)
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)
                         }

@@ -66,7 +66,7 @@ extension AppStore {
 
         var errorDescription: String? {
             switch self {
-            case .noAgent: return "还没有可用的助手，请先打开 App 创建一个。"
+            case .noAgent: return String(localized: "还没有可用的助手，请先打开 App 创建一个。")
             case .failed(let message): return message
             }
         }
@@ -85,7 +85,7 @@ extension AppStore {
             renameConversation(conversationID, to: Self.intentConversationTitle)
         }
         guard !isGenerating(conversationID) else {
-            throw IntentError.failed("这个助手正在回答上一个问题，请稍后再试。")
+            throw IntentError.failed(String(localized: "这个助手正在回答上一个问题，请稍后再试。"))
         }
 
         send(text: question, attachments: [], in: conversationID)
@@ -94,18 +94,18 @@ extension AppStore {
             await task.value
         }
         guard let reply = conversation(id: conversationID)?.messages.last, reply.role == .assistant else {
-            throw IntentError.failed("没有得到回答。")
+            throw IntentError.failed(String(localized: "没有得到回答。"))
         }
         if reply.isError {
             throw IntentError.failed(reply.errorText ?? reply.content)
         }
         let answer = ThinkParser.split(reply.content).answer.trimmed
-        guard !answer.isEmpty else { throw IntentError.failed("没有得到回答。") }
+        guard !answer.isEmpty else { throw IntentError.failed(String(localized: "没有得到回答。")) }
         saveNow()
         return answer
     }
 
-    static let intentConversationTitle = "Siri 与快捷指令"
+    static let intentConversationTitle = String(localized: "Siri 与快捷指令")
 
     /// 助手列表变化后，更新 Siri 短语里可以说出的助手名称
     func refreshAppShortcuts() {

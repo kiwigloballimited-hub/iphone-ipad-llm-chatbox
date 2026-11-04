@@ -70,7 +70,7 @@ struct AgentListView: View {
             AgentEditorView(agent: agent, isNew: store.agent(id: agent.id) == nil)
         }
         .confirmationDialog(
-            "删除助手「\(agentPendingDeletion?.name ?? "")」？",
+            String(localized: "删除助手「\(agentPendingDeletion?.name ?? "")」？"),
             isPresented: Binding(get: { agentPendingDeletion != nil }, set: { if !$0 { agentPendingDeletion = nil } }),
             titleVisibility: .visible
         ) {
@@ -107,7 +107,7 @@ private struct AgentRow: View {
 
     private var subtitle: String {
         let role = agent.persona.useCustomPrompt ? agent.persona.customPrompt : agent.persona.role
-        let modelText = model.isEmpty ? "未设置模型" : model
+        let modelText = model.isEmpty ? String(localized: "未设置模型") : model
         return role.isBlank ? modelText : "\(modelText) · \(role.trimmed)"
     }
 }

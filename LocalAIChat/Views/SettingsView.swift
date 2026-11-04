@@ -31,7 +31,7 @@ struct SettingsView: View {
                         offsets.map { store.servers[$0].id }.forEach(store.deleteServer)
                     }
                     Button("添加服务器", systemImage: "plus") {
-                        editingServer = ServerConfig(name: "服务器 \(store.servers.count + 1)")
+                        editingServer = ServerConfig(name: String(localized: "服务器 \(store.servers.count + 1)"))
                     }
                 } header: {
                     Text("AI 服务器")
@@ -229,8 +229,8 @@ struct ServerEditorView: View {
     }
 
     static let presets: [Preset] = [
-        Preset(name: "Ollama（本地）", url: "http://192.168.1.100:11434", type: .ollama, model: ""),
-        Preset(name: "LM Studio（本地）", url: "http://192.168.1.100:1234", type: .openAI, model: ""),
+        Preset(name: String(localized: "Ollama（本地）"), url: "http://192.168.1.100:11434", type: .ollama, model: ""),
+        Preset(name: String(localized: "LM Studio（本地）"), url: "http://192.168.1.100:1234", type: .openAI, model: ""),
         Preset(name: "DeepSeek", url: "https://api.deepseek.com", type: .openAI, model: "deepseek-chat"),
         Preset(name: "Anthropic Claude", url: "https://api.anthropic.com", type: .anthropic, model: "claude-opus-5-5"),
     ]
@@ -285,7 +285,7 @@ struct ServerEditorView: View {
                 }
 
                 Section {
-                    SecureField(server.apiType == .anthropic || server.baseURL.contains("deepseek") ? "API Key（必填）" : "API Key（本地服务一般不需要）", text: $server.apiKey)
+                    SecureField(server.apiType == .anthropic || server.baseURL.contains("deepseek") ? String(localized: "API Key（必填）") : String(localized: "API Key（本地服务一般不需要）"), text: $server.apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } header: {
@@ -348,7 +348,7 @@ struct ServerEditorView: View {
                     }
                 }
             }
-            .navigationTitle(server.name.isBlank ? "服务器" : server.name)
+            .navigationTitle(server.name.isBlank ? String(localized: "服务器") : server.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -356,7 +356,7 @@ struct ServerEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        server.name = server.name.isBlank ? "本地服务器" : server.name.trimmed
+                        server.name = server.name.isBlank ? String(localized: "本地服务器") : server.name.trimmed
                         server.baseURL = server.baseURL.trimmed
                         store.upsertServer(server)
                         dismiss()

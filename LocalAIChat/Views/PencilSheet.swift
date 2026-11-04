@@ -76,7 +76,7 @@ struct PencilSheet: View {
                         .padding(.top, 8)
                 }
             }
-            .navigationTitle(background == nil ? "画板" : "标注图片")
+            .navigationTitle(background == nil ? String(localized: "画板") : String(localized: "标注图片"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -101,7 +101,7 @@ struct PencilSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
-                        Button(background == nil ? "作为图片发送" : "附加标注后的图片", systemImage: "photo.badge.plus") {
+                        Button(background == nil ? String(localized: "作为图片发送") : String(localized: "附加标注后的图片"), systemImage: "photo.badge.plus") {
                             Task { await attachImage() }
                         }
                         Button("识别手写文字", systemImage: "text.viewfinder") {
@@ -119,7 +119,7 @@ struct PencilSheet: View {
                     onInsertText(text)
                     dismiss()
                 } onAskModel: {
-                    Task { await attachImage(prompt: "图中是我手写的内容，请先识别出文字，再按照其中的要求回答。") }
+                    Task { await attachImage(prompt: String(localized: "图中是我手写的内容，请先识别出文字，再按照其中的要求回答。")) }
                 }
             }
             .alert("提示", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -132,9 +132,9 @@ struct PencilSheet: View {
 
     private var hint: String {
         if background != nil {
-            return fingerDrawing ? "用笔或手指圈出想问的地方" : "用 Apple Pencil 圈出想问的地方"
+            return fingerDrawing ? String(localized: "用笔或手指圈出想问的地方") : String(localized: "用 Apple Pencil 圈出想问的地方")
         }
-        return "在这里手写问题，或画一张草图"
+        return String(localized: "在这里手写问题，或画一张草图")
     }
 
     /// 背景图片按比例放进可用区域；空白画板占满
@@ -210,7 +210,7 @@ struct PencilSheet: View {
 
     private func attachImage(prompt: String? = nil) async {
         guard let images = renderImages() else { return }
-        working = "正在处理图片…"
+        working = String(localized: "正在处理图片…")
         defer { working = nil }
 
         var attachments: [Attachment] = []
@@ -220,7 +220,7 @@ struct PencilSheet: View {
             attachments.append(attachment)
         }
         guard !attachments.isEmpty else {
-            errorMessage = "无法生成图片。"
+            errorMessage = String(localized: "无法生成图片。")
             return
         }
 
@@ -228,13 +228,13 @@ struct PencilSheet: View {
         if let prompt {
             suggestion = prompt
         } else if background == nil {
-            suggestion = "这是我手写 / 画的内容，请先识别，再回答其中的问题。"
+            suggestion = String(localized: "这是我手写 / 画的内容，请先识别，再回答其中的问题。")
         } else if drawing.strokes.isEmpty {
             suggestion = ""
         } else if attachments.count > 1 {
-            suggestion = "请重点看图中用笔圈出或标注的部分（第二张图是圈选区域的放大图）。"
+            suggestion = String(localized: "请重点看图中用笔圈出或标注的部分（第二张图是圈选区域的放大图）。")
         } else {
-            suggestion = "请重点看图中用笔圈出或标注的部分。"
+            suggestion = String(localized: "请重点看图中用笔圈出或标注的部分。")
         }
         onAttach(attachments, suggestion)
         dismiss()
@@ -242,7 +242,7 @@ struct PencilSheet: View {
 
     private func recognizeHandwriting() async {
         guard let image = renderInkOnly(), let cgImage = image.cgImage else { return }
-        working = "正在识别手写文字…"
+        working = String(localized: "正在识别手写文字…")
         let text = await Task.detached(priority: .userInitiated) { Self.recognizeText(in: cgImage) }.value
         working = nil
         recognized = RecognizedText(text: text)

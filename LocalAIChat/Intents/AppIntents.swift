@@ -60,7 +60,7 @@ struct AskAgentIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         let answer = try await AppStore.shared.askFromIntent(agentID: agent?.id, question: question)
-        let spoken = answer.count > 600 ? String(answer.prefix(600)) + "……（完整回答请在 App 中查看）" : answer
+        let spoken = answer.count > 600 ? String(answer.prefix(600)) + String(localized: "……（完整回答请在 App 中查看）") : answer
         return .result(value: answer, dialog: "\(spoken)")
     }
 }

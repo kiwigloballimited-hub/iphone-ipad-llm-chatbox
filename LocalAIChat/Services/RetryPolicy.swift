@@ -52,7 +52,7 @@ enum RetryPolicy {
             RequestMessage(role: .assistant, text: partial),
             RequestMessage(
                 role: .user,
-                text: "（系统提示：网络中断，你上一条回复只输出到「…\(tail)」为止。请从中断的地方直接接着写下去：不要重复已经写过的内容，不要重新开头，也不要提到中断。）"
+                text: String(localized: "（系统提示：网络中断，你上一条回复只输出到「…\(tail)」为止。请从中断的地方直接接着写下去：不要重复已经写过的内容，不要重新开头，也不要提到中断。）")
             ),
         ]
     }

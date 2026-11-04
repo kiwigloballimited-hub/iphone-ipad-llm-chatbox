@@ -98,7 +98,7 @@ private struct LockScreenActivityView: View {
                     }
                 }
                 if !context.state.phase.isFinal {
-                    Label(context.state.phase.label + (context.state.tokens > 0 ? " · 约 \(context.state.tokens) tokens" : ""), systemImage: context.state.phase.symbol)
+                    Label(context.state.phase.label + (context.state.tokens > 0 ? String(localized: " · 约 \(context.state.tokens) tokens") : ""), systemImage: context.state.phase.symbol)
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.8))
                 }

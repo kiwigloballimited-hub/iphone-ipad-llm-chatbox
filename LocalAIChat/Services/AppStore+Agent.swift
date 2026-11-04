@@ -102,12 +102,12 @@ extension AppStore {
                     apply(.usage(estimate), to: replyID, in: conversationID)
                 }
                 if turn.stopReason == "refusal" {
-                    appendNote("（模型拒绝了这个请求。）", to: replyID, in: conversationID)
+                    appendNote(String(localized: "（模型拒绝了这个请求。）"), to: replyID, in: conversationID)
                     break
                 }
                 if turn.toolCalls.isEmpty { break }
                 if turn.stopReason == "max_tokens" {
-                    appendNote("（回复长度达到上限，工具调用没有执行。可以在助手设置中调大「最大回复长度」。）", to: replyID, in: conversationID)
+                    appendNote(String(localized: "（回复长度达到上限，工具调用没有执行。可以在助手设置中调大「最大回复长度」。）"), to: replyID, in: conversationID)
                     break
                 }
 
@@ -127,7 +127,7 @@ extension AppStore {
                 entries.append(.toolResults(results))
 
                 if step == Self.maxAgentSteps - 1 {
-                    appendNote("（已达到单次回复最多 \(Self.maxAgentSteps) 轮操作的上限。可以说「继续」让它接着做。）", to: replyID, in: conversationID)
+                    appendNote(String(localized: "（已达到单次回复最多 \(Self.maxAgentSteps) 轮操作的上限。可以说「继续」让它接着做。）"), to: replyID, in: conversationID)
                 }
             }
         } catch {
@@ -154,7 +154,7 @@ extension AppStore {
                 return ToolResult(
                     callID: result.callID,
                     name: result.name,
-                    content: String(result.content.prefix(400)) + "…（较早的页面内容已省略）",
+                    content: String(result.content.prefix(400)) + String(localized: "…（较早的页面内容已省略）"),
                     isError: result.isError
                 )
             })

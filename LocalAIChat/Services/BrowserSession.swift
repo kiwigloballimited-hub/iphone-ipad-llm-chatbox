@@ -107,7 +107,7 @@ final class BrowserSession: NSObject, WKUIDelegate {
 
     func snapshot() async -> Snapshot {
         let fallback = Snapshot(title: webView.title ?? "", url: webView.url?.absoluteString ?? "", content: "", elementCount: 0)
-        guard let raw = try? await webView.callAsyncJavaScript(Self.snapshotScript, arguments: [:], contentWorld: .defaultClient),
+        guard let raw = try? await webView.callAsyncJavaScript(Self.snapshotScript, arguments: ["L": Self.elementLabels], contentWorld: .defaultClient),
               let string = raw as? String,
               let data = string.data(using: .utf8),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
@@ -169,6 +169,28 @@ final class BrowserSession: NSObject, WKUIDelegate {
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
     }
 
+    /// 页面快照中元素类型的名称（发给模型，跟随 App 语言）
+    private static var elementLabels: [String: String] {
+        [
+            "link": String(localized: "链接"),
+            "button": String(localized: "按钮"),
+            "checkbox": String(localized: "复选框"),
+            "radio": String(localized: "单选"),
+            "checked": String(localized: "(已选中)"),
+            "unchecked": String(localized: "(未选中)"),
+            "password": String(localized: "密码框"),
+            "input": String(localized: "输入框"),
+            "textarea": String(localized: "多行输入框"),
+            "value": String(localized: "当前值"),
+            "select": String(localized: "下拉框"),
+            "current": String(localized: "当前"),
+            "options": String(localized: "选项"),
+            "editable": String(localized: "编辑区"),
+            "clickable": String(localized: "可点击"),
+            "image": String(localized: "图片"),
+        ]
+    }
+
     // MARK: - Scripts（在独立的 JS 环境中运行，网页脚本无法篡改）
 
     private static let snapshotScript = #"""
@@ -214,27 +236,27 @@ final class BrowserSession: NSObject, WKUIDelegate {
         if (!text) { const img = el.querySelector('img[alt]'); if (img) text = short(img.alt, 70); }
         let href = '';
         try { const u = new URL(el.href); href = (u.host + u.pathname).slice(0, 70); } catch (e) {}
-        return '[' + n + ']链接「' + text + '」' + (href ? '→' + href : '');
+        return '[' + n + ']' + L.link + '「' + text + '」' + (href ? '→' + href : '');
       }
       if (tag === 'INPUT') {
-        if (['submit','button','reset','image'].includes(type)) return '[' + n + ']按钮「' + short(el.value || el.getAttribute('aria-label') || el.alt, 40) + '」';
-        if (type === 'checkbox' || type === 'radio') return '[' + n + ']' + (type === 'checkbox' ? '复选框' : '单选') + '「' + fieldLabel(el) + '」' + (el.checked ? '(已选中)' : '(未选中)');
-        if (type === 'password') return '[' + n + ']密码框「' + fieldLabel(el) + '」';
-        const value = el.value ? ' 当前值:"' + short(el.value, 40) + '"' : '';
-        return '[' + n + ']输入框「' + fieldLabel(el) + '」' + value;
+        if (['submit','button','reset','image'].includes(type)) return '[' + n + ']' + L.button + '「' + short(el.value || el.getAttribute('aria-label') || el.alt, 40) + '」';
+        if (type === 'checkbox' || type === 'radio') return '[' + n + ']' + (type === 'checkbox' ? L.checkbox : L.radio) + '「' + fieldLabel(el) + '」' + (el.checked ? L.checked : L.unchecked);
+        if (type === 'password') return '[' + n + ']' + L.password + '「' + fieldLabel(el) + '」';
+        const value = el.value ? ' ' + L.value + ':"' + short(el.value, 40) + '"' : '';
+        return '[' + n + ']' + L.input + '「' + fieldLabel(el) + '」' + value;
       }
       if (tag === 'TEXTAREA') {
-        const value = el.value ? ' 当前值:"' + short(el.value, 40) + '"' : '';
-        return '[' + n + ']多行输入框「' + fieldLabel(el) + '」' + value;
+        const value = el.value ? ' ' + L.value + ':"' + short(el.value, 40) + '"' : '';
+        return '[' + n + ']' + L.textarea + '「' + fieldLabel(el) + '」' + value;
       }
       if (tag === 'SELECT') {
         const options = Array.from(el.options).slice(0, 15).map(o => short(o.text, 20)).join(' / ');
         const current = el.selectedOptions[0] ? short(el.selectedOptions[0].text, 20) : '';
-        return '[' + n + ']下拉框「' + fieldLabel(el) + '」当前:' + current + ' 选项:' + options;
+        return '[' + n + ']' + L.select + '「' + fieldLabel(el) + '」' + L.current + ':' + current + ' ' + L.options + ':' + options;
       }
-      if (el.isContentEditable) return '[' + n + ']编辑区「' + short(el.innerText, 40) + '」';
+      if (el.isContentEditable) return '[' + n + ']' + L.editable + '「' + short(el.innerText, 40) + '」';
       const text = short(el.innerText || el.getAttribute('aria-label') || el.title || el.value, 60);
-      return '[' + n + ']' + (tag === 'BUTTON' ? '按钮' : '可点击') + '「' + text + '」';
+      return '[' + n + ']' + (tag === 'BUTTON' ? L.button : L.clickable) + '「' + text + '」';
     }
     function walk(node) {
       if (length >= LIMIT) return;
@@ -255,7 +277,7 @@ final class BrowserSession: NSObject, WKUIDelegate {
       }
       const block = BLOCK.has(el.tagName);
       if (block) push('\n');
-      if (el.tagName === 'IMG' && el.alt) push('[图片:' + short(el.alt, 40) + ']');
+      if (el.tagName === 'IMG' && el.alt) push('[' + L.image + ':' + short(el.alt, 40) + ']');
       for (const child of el.childNodes) walk(child);
       if (block) push('\n');
     }

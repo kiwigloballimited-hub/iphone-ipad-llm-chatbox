@@ -12,7 +12,7 @@ private func contextColor(_ fraction: Double) -> Color {
 
 @MainActor
 private func costText(_ stats: SessionStats, store: AppStore) -> String? {
-    if stats.isFree { return "免费" }
+    if stats.isFree { return String(localized: "免费") }
     guard let cost = stats.cost else { return nil }
     return (stats.estimated ? "≈" : "") + store.formatCost(cost) + (stats.costIncomplete ? "+" : "")
 }
@@ -118,7 +118,7 @@ struct UsageDetailSheet: View {
                     }
                 }
                 LabeledContent("上下文窗口") {
-                    Text(stats.contextWindow.map { "\(AppStore.formatTokens($0))（\(stats.contextSource)）" } ?? "未知")
+                    Text(stats.contextWindow.map { String(localized: "\(AppStore.formatTokens($0))（\(stats.contextSource)）") } ?? String(localized: "未知"))
                 }
                 Picker("手动设置窗口", selection: Binding(
                     get: { agent.contextWindowOverride },
@@ -150,18 +150,18 @@ struct UsageDetailSheet: View {
             }
 
             Section {
-                row("输入", stats.usage.inputTokens, estimated: stats.usage.estimated)
+                row(String(localized: "输入"), stats.usage.inputTokens, estimated: stats.usage.estimated)
                 if stats.usage.cachedInputTokens > 0 {
-                    row("　其中缓存命中", stats.usage.cachedInputTokens, estimated: false)
+                    row(String(localized: "　其中缓存命中"), stats.usage.cachedInputTokens, estimated: false)
                 }
-                row("输出（含思考）", stats.usage.outputTokens, estimated: stats.usage.estimated)
+                row(String(localized: "输出（含思考）"), stats.usage.outputTokens, estimated: stats.usage.estimated)
                 if stats.streamingTokens > 0 {
-                    row("正在生成", stats.streamingTokens, estimated: true)
+                    row(String(localized: "正在生成"), stats.streamingTokens, estimated: true)
                 }
                 if stats.background.totalTokens > 0 {
-                    row("后台整理（摘要 / 记忆）", stats.background.totalTokens, estimated: stats.background.estimated)
+                    row(String(localized: "后台整理（摘要 / 记忆）"), stats.background.totalTokens, estimated: stats.background.estimated)
                 }
-                row("合计", stats.totalTokens, estimated: stats.estimated)
+                row(String(localized: "合计"), stats.totalTokens, estimated: stats.estimated)
                     .fontWeight(.semibold)
                 LabeledContent("请求次数", value: "\(stats.usage.requests + stats.background.requests)")
             } header: {
@@ -174,10 +174,10 @@ struct UsageDetailSheet: View {
 
             Section {
                 LabeledContent("预估费用") {
-                    Text(costText(stats, store: store) ?? "未知（没有价格）")
+                    Text(costText(stats, store: store) ?? String(localized: "未知（没有价格）"))
                         .fontWeight(.semibold)
                 }
-                LabeledContent("模型", value: model.isEmpty ? "未设置" : model)
+                LabeledContent("模型", value: model.isEmpty ? String(localized: "未设置") : model)
                 LabeledContent("价格来源", value: lookup.source.label)
                 if let price = lookup.price, price != .free {
                     LabeledContent("输入 / 输出", value: "$\(Self.format(price.input)) / $\(Self.format(price.output))")
@@ -201,7 +201,7 @@ struct UsageDetailSheet: View {
     private func contextSummary(_ stats: SessionStats) -> String {
         let used = (stats.contextEstimated ? "≈" : "") + AppStore.formatTokens(stats.contextUsed)
         guard let window = stats.contextWindow, let fraction = stats.contextFraction else { return used }
-        return "\(used) / \(AppStore.formatTokens(window))（\(Int((fraction * 100).rounded()))%）"
+        return String(localized: "\(used) / \(AppStore.formatTokens(window))（\(Int((fraction * 100).rounded()))%）")
     }
 
     private func row(_ title: String, _ value: Int, estimated: Bool) -> some View {
@@ -254,7 +254,7 @@ struct ModelPricesView: View {
     private func summary(_ lookup: (price: ModelPrice?, source: PriceSource)) -> String {
         guard let price = lookup.price else { return lookup.source.label }
         if price == .free { return lookup.source.label }
-        return "输入 $\(UsageDetailSheet.format(price.input)) · 输出 $\(UsageDetailSheet.format(price.output)) · \(lookup.source.label)"
+        return String(localized: "输入 $\(UsageDetailSheet.format(price.input)) · 输出 $\(UsageDetailSheet.format(price.output)) · \(lookup.source.label)")
     }
 }
 
@@ -277,9 +277,9 @@ struct PriceEditorView: View {
                 LabeledContent("当前", value: lookup.source.label)
             }
             Section {
-                priceField("输入", value: $input)
-                priceField("输出", value: $output)
-                priceField("缓存命中的输入", value: $cached)
+                priceField(String(localized: "输入"), value: $input)
+                priceField(String(localized: "输出"), value: $output)
+                priceField(String(localized: "缓存命中的输入"), value: $cached)
             } header: {
                 Text("价格（美元 / 每百万 token）")
             } footer: {

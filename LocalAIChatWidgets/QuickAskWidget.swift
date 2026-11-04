@@ -73,7 +73,7 @@ struct QuickAskWidgetView: View {
 
     private var name: String {
         let value = entry.configuration.agentName?.trimmingCharacters(in: .whitespaces) ?? ""
-        return value.isEmpty ? "本地AI" : value
+        return value.isEmpty ? String(localized: "本地AI") : value
     }
 
     private var emoji: String {
@@ -100,7 +100,7 @@ struct QuickAskWidgetView: View {
                 Label(name, systemImage: voice ? "mic.fill" : "bubble.left.fill")
                     .font(.headline)
                     .widgetAccentable()
-                Text(voice ? "点按语音提问" : "点按开始新对话")
+                Text(voice ? String(localized: "点按语音提问") : String(localized: "点按开始新对话"))
                     .font(.caption)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,7 +108,7 @@ struct QuickAskWidgetView: View {
             .containerBackground(for: .widget) { Color.clear }
 
         case .accessoryInline:
-            Label("\(name) · \(voice ? "语音提问" : "新对话")", systemImage: voice ? "mic.fill" : "bubble.left.fill")
+            Label("\(name) · \(voice ? String(localized: "语音提问") : String(localized: "新对话"))", systemImage: voice ? "mic.fill" : "bubble.left.fill")
                 .widgetURL(DeepLink.newChat(agent: agentRef, voice: voice))
                 .containerBackground(for: .widget) { Color.clear }
 
@@ -126,10 +126,10 @@ struct QuickAskWidgetView: View {
                 Spacer()
                 VStack(spacing: 10) {
                     Link(destination: DeepLink.newChat(agent: agentRef, voice: true)) {
-                        actionLabel("语音提问", systemImage: "mic.fill")
+                        actionLabel(String(localized: "语音提问"), systemImage: "mic.fill")
                     }
                     Link(destination: DeepLink.newChat(agent: agentRef, voice: false)) {
-                        actionLabel("新对话", systemImage: "square.and.pencil")
+                        actionLabel(String(localized: "新对话"), systemImage: "square.and.pencil")
                     }
                 }
             }
@@ -149,7 +149,7 @@ struct QuickAskWidgetView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(voice ? "点按语音提问" : "点按开始新对话")
+                Text(voice ? String(localized: "点按语音提问") : String(localized: "点按开始新对话"))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
             }

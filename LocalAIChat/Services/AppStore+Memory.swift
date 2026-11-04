@@ -98,17 +98,17 @@ extension AppStore {
         let chunk = Array(uncovered.dropLast(limit))
         guard let lastCovered = chunk.last, case let (client, options)? = utilityClient(for: agent) else { return }
 
-        maintenanceStatus[conversationID] = "正在整理早期对话摘要…"
-        var prompt = "请把下面的对话内容压缩成一段简洁的摘要，供之后继续对话时参考。\n要求：保留关键事实、用户的需求和偏好、已经得出的结论或决定、尚未完成的事项；用第三人称叙述（「用户」「\(agent.name)」）；不超过 400 字；只输出摘要本身。\n\n"
+        maintenanceStatus[conversationID] = String(localized: "正在整理早期对话摘要…")
+        var prompt = String(localized: "请把下面的对话内容压缩成一段简洁的摘要，供之后继续对话时参考。\n要求：保留关键事实、用户的需求和偏好、已经得出的结论或决定、尚未完成的事项；用第三人称叙述（「用户」「\(agent.name)」）；不超过 400 字；只输出摘要本身。\n\n")
         if let previous = conversation.summary, !previous.isBlank {
-            prompt += "【已有摘要】（请与下面的新内容合并成一份完整的摘要）\n\(previous)\n\n"
+            prompt += String(localized: "【已有摘要】（请与下面的新内容合并成一份完整的摘要）\n\(previous)\n\n")
         }
-        prompt += "【新的对话内容】\n" + Self.transcript(chunk, agentName: agent.name, maxCharacters: 16000)
+        prompt += String(localized: "【新的对话内容】\n") + Self.transcript(chunk, agentName: agent.name, maxCharacters: 16000)
 
         do {
             let (summary, usage) = try await client.complete(
                 messages: [
-                    RequestMessage(role: .system, text: "你是一个擅长归纳总结的助手。"),
+                    RequestMessage(role: .system, text: String(localized: "你是一个擅长归纳总结的助手。")),
                     RequestMessage(role: .user, text: prompt),
                 ],
                 options: options
@@ -119,7 +119,7 @@ extension AppStore {
             conversations[i].summaryCoversUntil = lastCovered.createdAt
             save()
         } catch {
-            print("生成摘要失败：\(error)")
+            print(String(localized: "生成摘要失败：\(error)"))
         }
     }
 
@@ -136,7 +136,7 @@ extension AppStore {
         guard pending.filter({ $0.role == .user }).count >= Self.autoMemoryUserMessages,
               let last = pending.last else { return }
 
-        maintenanceStatus[conversationID] = "正在整理长期记忆…"
+        maintenanceStatus[conversationID] = String(localized: "正在整理长期记忆…")
         do {
             let items = try await requestMemories(agent: agent, messages: pending, conversationID: conversationID)
             for text in items {
@@ -147,7 +147,7 @@ extension AppStore {
             }
             save()
         } catch {
-            print("自动提取记忆失败：\(error)")
+            print(String(localized: "自动提取记忆失败：\(error)"))
         }
     }
 
@@ -155,12 +155,12 @@ extension AppStore {
 
     private func requestMemories(agent: Agent, messages: [ChatMessage], conversationID: UUID?) async throws -> [String] {
         guard case let (client, options)? = utilityClient(for: agent) else {
-            throw LLMError.server("还没有配置服务器或模型。")
+            throw LLMError.server(String(localized: "还没有配置服务器或模型。"))
         }
         let existing = memories(for: agent.id)
-        let existingText = existing.isEmpty ? "（暂无）" : existing.map { "- " + $0.text }.joined(separator: "\n")
+        let existingText = existing.isEmpty ? String(localized: "（暂无）") : existing.map { "- " + $0.text }.joined(separator: "\n")
 
-        let prompt = """
+        let prompt = String(localized: """
         下面是用户与 AI 助手「\(agent.name)」的一段对话。请从中提取值得长期记住、以后的对话中也用得上的信息，例如：用户的个人情况、喜好与习惯、正在进行的项目或作品、重要的事实、约定或目标。
 
         要求：
@@ -174,11 +174,11 @@ extension AppStore {
 
         【对话】
         \(Self.transcript(messages, agentName: agent.name, maxCharacters: 12000))
-        """
+        """)
 
         let (reply, usage) = try await client.complete(
             messages: [
-                RequestMessage(role: .system, text: "你是一个负责整理长期记忆的助手，只输出记忆列表。"),
+                RequestMessage(role: .system, text: String(localized: "你是一个负责整理长期记忆的助手，只输出记忆列表。")),
                 RequestMessage(role: .user, text: prompt),
             ],
             options: options
@@ -212,11 +212,11 @@ extension AppStore {
             if text.count > 1500 { text = String(text.prefix(1500)) + "…" }
             if !message.attachments.isEmpty {
                 let names = message.attachments.filter { $0.kind == .document }.compactMap(\.displayName)
-                let documents = names.isEmpty ? "" : "（文档：\(names.joined(separator: "、"))）"
-                text = "[附带 \(message.attachments.count) 个附件\(documents)] " + text
+                let documents = names.isEmpty ? "" : String(localized: "（文档：\(names.joined(separator: String(localized: "、")))）")
+                text = String(localized: "[附带 \(message.attachments.count) 个附件\(documents)] ") + text
             }
             guard !text.isEmpty else { continue }
-            lines.append("\(message.role == .user ? "用户" : agentName)：\(text)")
+            lines.append(String(localized: "\(message.role == .user ? String(localized: "用户") : agentName)：\(text)"))
         }
         var kept: [String] = []
         var total = 0
@@ -242,8 +242,11 @@ extension AppStore {
                 line.removeSubrange(range)
             }
             line = line.trimmed
-            if line.isEmpty || line == "无" || line.hasPrefix("无新") || line.hasPrefix("没有") { continue }
-            if line.hasSuffix("：") || line.hasSuffix(":") { continue }
+            // 模型表示「没有新信息」（中文 / 英文） // l10n-skip
+            let lowered = line.lowercased()
+            if line.isEmpty || ["无", "無", "none", "none."].contains(lowered) || line.hasPrefix("无新") || line.hasPrefix("無新") // l10n-skip
+                || line.hasPrefix("没有") || line.hasPrefix("沒有") || lowered.hasPrefix("no new") || lowered.hasPrefix("nothing new") { continue } // l10n-skip
+            if line.hasSuffix(String(localized: "：")) || line.hasSuffix(":") { continue }
             if !result.contains(line) { result.append(line) }
         }
         return result

@@ -18,9 +18,9 @@ final class SpeechRecognizer {
     @ObservationIgnored private var task: SFSpeechRecognitionTask?
 
     static let languages: [(id: String, name: String)] = [
-        ("zh-CN", "中文（普通话）"),
-        ("zh-HK", "粤语"),
-        ("zh-TW", "中文（台湾）"),
+        ("zh-CN", String(localized: "中文（普通话）")),
+        ("zh-HK", String(localized: "粤语")),
+        ("zh-TW", String(localized: "中文（台湾）")),
         ("en-GB", "English (UK)"),
         ("en-US", "English (US)"),
     ]
@@ -28,11 +28,11 @@ final class SpeechRecognizer {
     func start(localeID: String) async {
         errorMessage = nil
         guard await Self.requestPermissions() else {
-            errorMessage = "需要麦克风和语音识别权限。请在「设置 › 隐私与安全性」中允许「本地AI」使用麦克风和语音识别。"
+            errorMessage = String(localized: "需要麦克风和语音识别权限。请在「设置 › 隐私与安全性」中允许「本地AI」使用麦克风和语音识别。")
             return
         }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeID)), recognizer.isAvailable else {
-            errorMessage = "当前语言的语音识别暂时不可用。"
+            errorMessage = String(localized: "当前语言的语音识别暂时不可用。")
             return
         }
         stop()
@@ -68,7 +68,7 @@ final class SpeechRecognizer {
             })
             isRecording = true
         } catch {
-            errorMessage = "无法开始录音：\(error.localizedDescription)"
+            errorMessage = String(localized: "无法开始录音：\(error.localizedDescription)")
             stop()
         }
     }

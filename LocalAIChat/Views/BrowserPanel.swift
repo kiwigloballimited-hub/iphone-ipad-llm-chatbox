@@ -17,7 +17,7 @@ struct BrowserPanel: View {
                 .disabled(!session.canGoBack)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(session.title.isEmpty ? "浏览器" : session.title)
+                    Text(session.title.isEmpty ? String(localized: "浏览器") : session.title)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     Text(URL(string: session.currentURL)?.host ?? session.currentURL)
@@ -75,7 +75,7 @@ struct BrowserStatusBar: View {
                 if session.isLoading {
                     ProgressView().controlSize(.mini)
                 }
-                Text(session.title.isEmpty ? (URL(string: session.currentURL)?.host ?? "浏览器") : session.title)
+                Text(session.title.isEmpty ? (URL(string: session.currentURL)?.host ?? String(localized: "浏览器")) : session.title)
                     .lineLimit(1)
                 Spacer()
                 Image(systemName: "chevron.down")

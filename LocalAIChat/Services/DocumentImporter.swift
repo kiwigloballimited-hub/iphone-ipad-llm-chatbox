@@ -30,10 +30,10 @@ enum DocumentImporter {
         }
         let text = await Task.detached(priority: .userInitiated) { readText(at: url, type: type) }.value
         guard let text, !text.isBlank else {
-            return Imported(note: "「\(name)」里没有可以读取的文字。")
+            return Imported(note: String(localized: "「\(name)」里没有可以读取的文字。"))
         }
         guard let attachment = await AttachmentFactory.document(name: name, text: text, pageCount: nil, originalByteCount: AttachmentFactory.fileSize(url)) else {
-            return Imported(note: "无法保存「\(name)」。")
+            return Imported(note: String(localized: "无法保存「\(name)」。"))
         }
         return Imported(attachments: [attachment])
     }
@@ -60,7 +60,7 @@ enum DocumentImporter {
             return (text, pages, images)
         }.value
 
-        guard let result else { return Imported(note: "无法打开「\(name)」，文件可能已加密或损坏。") }
+        guard let result else { return Imported(note: String(localized: "无法打开「\(name)」，文件可能已加密或损坏。")) }
 
         var imported = Imported()
         if !result.text.isEmpty,
@@ -73,11 +73,11 @@ enum DocumentImporter {
             }
         }
         if !result.images.isEmpty {
-            let more = result.pages > maxScannedPages ? "（只转换了前 \(maxScannedPages) 页）" : ""
-            imported.note = "「\(name)」看起来是扫描件，已把页面转成图片\(more)。识别图片需要视觉模型。"
+            let more = result.pages > maxScannedPages ? String(localized: "（只转换了前 \(maxScannedPages) 页）") : ""
+            imported.note = String(localized: "「\(name)」看起来是扫描件，已把页面转成图片\(more)。识别图片需要视觉模型。")
         }
         if imported.attachments.isEmpty {
-            imported.note = "「\(name)」里没有可以读取的内容。"
+            imported.note = String(localized: "「\(name)」里没有可以读取的内容。")
         }
         return imported
     }

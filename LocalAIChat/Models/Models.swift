@@ -11,27 +11,27 @@ enum APIType: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .openAI: return "OpenAI 兼容接口"
-        case .ollama: return "Ollama 原生接口"
-        case .anthropic: return "Anthropic（Claude）"
+        case .openAI: return String(localized: "OpenAI 兼容接口")
+        case .ollama: return String(localized: "Ollama 原生接口")
+        case .anthropic: return String(localized: "Anthropic（Claude）")
         }
     }
 
     var hint: String {
         switch self {
         case .openAI:
-            return "适用于 LM Studio、llama.cpp、vLLM、Ollama（/v1）等。地址示例：http://192.168.1.10:1234"
+            return String(localized: "适用于 LM Studio、llama.cpp、vLLM、Ollama（/v1）等。地址示例：http://192.168.1.10:1234")
         case .ollama:
-            return "直接使用 Ollama 的 /api/chat。地址示例：http://192.168.1.10:11434"
+            return String(localized: "直接使用 Ollama 的 /api/chat。地址示例：http://192.168.1.10:11434")
         case .anthropic:
-            return "Claude 官方 API。地址：https://api.anthropic.com，需要填写 API Key。"
+            return String(localized: "Claude 官方 API。地址：https://api.anthropic.com，需要填写 API Key。")
         }
     }
 }
 
 struct ServerConfig: Codable, Identifiable, Hashable {
     var id = UUID()
-    var name: String = "本地服务器"
+    var name: String = String(localized: "本地服务器")
     var baseURL: String = "http://192.168.1.100:11434"
     var apiType: APIType = .ollama
     var apiKey: String = ""
@@ -58,21 +58,21 @@ struct Persona: Codable, Hashable {
         var parts: [String] = []
         let name = agentName.trimmed
         if !name.isEmpty {
-            parts.append("你的名字是「\(name)」。")
+            parts.append(String(localized: "你的名字是「\(name)」。"))
         }
         let sections: [(String, String)] = [
-            ("身份", role),
-            ("性格", personality),
-            ("说话风格", speakingStyle),
-            ("背景故事", background),
-            ("行为准则", rules),
-            ("对话示例", exampleDialogue),
+            (String(localized: "身份"), role),
+            (String(localized: "性格"), personality),
+            (String(localized: "说话风格"), speakingStyle),
+            (String(localized: "背景故事"), background),
+            (String(localized: "行为准则"), rules),
+            (String(localized: "对话示例"), exampleDialogue),
         ]
         for (title, value) in sections where !value.isBlank {
-            parts.append("【\(title)】\n\(value.trimmed)")
+            parts.append(String(localized: "【\(title)】\n\(value.trimmed)"))
         }
         if parts.count > 1 {
-            parts.append("请在整个对话中始终保持以上人格设定。")
+            parts.append(String(localized: "请在整个对话中始终保持以上人格设定。"))
         }
         return parts.joined(separator: "\n\n")
     }
@@ -80,7 +80,7 @@ struct Persona: Codable, Hashable {
 
 struct Agent: Codable, Identifiable, Hashable {
     var id = UUID()
-    var name: String = "新助手"
+    var name: String = String(localized: "新助手")
     var avatar: String = "🤖"
     var persona = Persona()
     /// 新建对话时由助手先说的话（可选）
@@ -187,21 +187,21 @@ enum ThinkingLevel: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .auto: return "自动"
-        case .off: return "关闭"
-        case .low: return "低"
-        case .medium: return "中"
-        case .high: return "高"
+        case .auto: return String(localized: "自动")
+        case .off: return String(localized: "关闭")
+        case .low: return String(localized: "低")
+        case .medium: return String(localized: "中")
+        case .high: return String(localized: "高")
         }
     }
 
     var detail: String {
         switch self {
-        case .auto: return "使用模型默认设置"
-        case .off: return "不思考，直接回答，速度最快"
-        case .low: return "简单思考"
-        case .medium: return "适度思考"
-        case .high: return "深入思考，回答更慢但更严谨"
+        case .auto: return String(localized: "使用模型默认设置")
+        case .off: return String(localized: "不思考，直接回答，速度最快")
+        case .low: return String(localized: "简单思考")
+        case .medium: return String(localized: "适度思考")
+        case .high: return String(localized: "深入思考，回答更慢但更严谨")
         }
     }
 }
@@ -350,9 +350,9 @@ enum DisplayCurrency: String, Codable, CaseIterable, Identifiable {
     }
     var displayName: String {
         switch self {
-        case .usd: return "美元 USD"
-        case .gbp: return "英镑 GBP"
-        case .cny: return "人民币 CNY"
+        case .usd: return String(localized: "美元 USD")
+        case .gbp: return String(localized: "英镑 GBP")
+        case .cny: return String(localized: "人民币 CNY")
         }
     }
     /// 默认汇率（1 美元 = ?），仅作参考，可在设置中修改
@@ -402,19 +402,19 @@ struct Conversation: Codable, Identifiable, Hashable {
     /// 分支：从原对话复制过来的最后一条消息（之后是分支里的新内容）
     var forkPointMessageID: UUID?
 
-    static let defaultTitle = "新对话"
+    static let defaultTitle = String(localized: "新对话")
 
     var preview: String {
-        guard let last = messages.last(where: { $0.role != .system }) else { return "暂无消息" }
+        guard let last = messages.last(where: { $0.role != .system }) else { return String(localized: "暂无消息") }
         if last.isError, let errorText = last.errorText, ThinkParser.split(last.content).answer.isBlank {
             return "⚠️ " + errorText
         }
         let text = ThinkParser.split(last.content).answer.trimmed
         if !text.isEmpty { return text }
         if let document = last.attachments.first(where: { $0.kind == .document }) {
-            return "[文档] " + (document.displayName ?? "文档")
+            return String(localized: "[文档] ") + (document.displayName ?? String(localized: "文档"))
         }
-        if !last.attachments.isEmpty { return "[\(last.attachments.count) 张图片]" }
+        if !last.attachments.isEmpty { return String(localized: "[\(last.attachments.count) 张图片]") }
         return "…"
     }
 }
@@ -429,8 +429,8 @@ enum FrameSamplingMode: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .uniform: return "均匀抽取"
-        case .interval: return "按间隔"
+        case .uniform: return String(localized: "均匀抽取")
+        case .interval: return String(localized: "按间隔")
         }
     }
 }
@@ -511,10 +511,10 @@ enum SearchEngine: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .bing: return "必应 Bing"
+        case .bing: return String(localized: "必应 Bing")
         case .google: return "Google"
         case .duckDuckGo: return "DuckDuckGo"
-        case .baidu: return "百度"
+        case .baidu: return String(localized: "百度")
         }
     }
 

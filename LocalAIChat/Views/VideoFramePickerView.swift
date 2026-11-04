@@ -63,7 +63,7 @@ struct VideoFramePickerView: View {
 
     private var infoSection: some View {
         Section {
-            LabeledContent("时长", value: duration > 0 ? Format.duration(duration) : "读取中…")
+            LabeledContent("时长", value: duration > 0 ? Format.duration(duration) : String(localized: "读取中…"))
             if videoSize != .zero {
                 LabeledContent("分辨率", value: "\(Int(videoSize.width)) × \(Int(videoSize.height))")
             }
@@ -144,7 +144,7 @@ struct VideoFramePickerView: View {
                 Text("已选 \(selected.count) / \(frames.count) 帧")
                 Spacer()
                 if !frames.isEmpty {
-                    Text(selected.count == frames.count ? "全不选" : "全选")
+                    Text(selected.count == frames.count ? String(localized: "全不选") : String(localized: "全选"))
                         .foregroundStyle(Color.accentColor)
                         .onTapGesture {
                             selected = selected.count == frames.count ? [] : Set(frames.map(\.id))
@@ -189,7 +189,7 @@ struct VideoFramePickerView: View {
             } catch is CancellationError {
                 return
             } catch {
-                errorText = "抽帧失败：\(error.localizedDescription)"
+                errorText = String(localized: "抽帧失败：\(error.localizedDescription)")
             }
             isExtracting = false
         }

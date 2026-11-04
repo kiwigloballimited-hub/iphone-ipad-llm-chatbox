@@ -67,7 +67,7 @@ struct MessageBubble: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 4)
                     } label: {
-                        Label(isStreaming && answer.isEmpty ? "思考中…" : "思考过程", systemImage: "brain")
+                        Label(isStreaming && answer.isEmpty ? String(localized: "思考中…") : String(localized: "思考过程"), systemImage: "brain")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -140,10 +140,10 @@ struct MessageBubble: View {
         }
         if !isStreaming {
             Section("上下文") {
-                Button(message.isPinned ? "取消置顶" : "置顶到上下文", systemImage: message.isPinned ? "pin.slash" : "pin") {
+                Button(message.isPinned ? String(localized: "取消置顶") : String(localized: "置顶到上下文"), systemImage: message.isPinned ? "pin.slash" : "pin") {
                     store.togglePin(message.id, in: conversationID)
                 }
-                Button(message.isExcluded ? "重新发送给模型" : "不发送给模型", systemImage: message.isExcluded ? "eye" : "eye.slash") {
+                Button(message.isExcluded ? String(localized: "重新发送给模型") : String(localized: "不发送给模型"), systemImage: message.isExcluded ? "eye" : "eye.slash") {
                     store.toggleExclude(message.id, in: conversationID)
                 }
                 Button("从这里开始新的上下文", systemImage: "scissors") {
@@ -243,7 +243,7 @@ private struct AgentStepsView: View {
                 Button {
                     withAnimation { expanded.toggle() }
                 } label: {
-                    Label(expanded ? "收起步骤" : "共 \(steps.count) 个步骤，显示全部", systemImage: expanded ? "chevron.up" : "chevron.down")
+                    Label(expanded ? String(localized: "收起步骤") : String(localized: "共 \(steps.count) 个步骤，显示全部"), systemImage: expanded ? "chevron.up" : "chevron.down")
                         .font(.caption2)
                 }
                 .buttonStyle(.plain)
@@ -337,7 +337,7 @@ struct AttachmentThumbnail: View {
                     Image(systemName: DocumentChip.icon(for: attachment))
                         .font(.system(size: size * 0.3))
                         .foregroundStyle(Color.accentColor)
-                    Text(attachment.displayName ?? "文档")
+                    Text(attachment.displayName ?? String(localized: "文档"))
                         .font(.system(size: 9))
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
@@ -432,7 +432,7 @@ struct DocumentChip: View {
                 .font(.title2)
                 .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 2) {
-                Text(attachment.displayName ?? "文档")
+                Text(attachment.displayName ?? String(localized: "文档"))
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 Text(detail)
@@ -447,9 +447,9 @@ struct DocumentChip: View {
 
     private var detail: String {
         var parts: [String] = []
-        if let pages = attachment.pageCount { parts.append("\(pages) 页") }
-        if let length = attachment.textLength { parts.append("\(length.formatted()) 字") }
-        if length > AppStore.documentCharacterLimit { parts.append("超出部分不会发送") }
+        if let pages = attachment.pageCount { parts.append(String(localized: "\(pages) 页")) }
+        if let length = attachment.textLength { parts.append(String(localized: "\(length.formatted()) 字")) }
+        if length > AppStore.documentCharacterLimit { parts.append(String(localized: "超出部分不会发送")) }
         return parts.joined(separator: " · ")
     }
 
@@ -495,7 +495,7 @@ struct AttachmentPreview: View {
                 Spacer()
             }
             .padding(.top)
-            .navigationTitle(attachment.kind == .image ? "图片" : "视频帧")
+            .navigationTitle(attachment.kind == .image ? String(localized: "图片") : String(localized: "视频帧"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

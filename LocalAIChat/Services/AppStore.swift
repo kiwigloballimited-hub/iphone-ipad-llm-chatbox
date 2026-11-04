@@ -77,7 +77,7 @@ final class AppStore {
             // 解析失败时保留一份备份，避免数据被覆盖丢失
             let backup = Storage.baseDirectory.appendingPathComponent("data-backup-\(Int(Date().timeIntervalSince1970)).json")
             try? data.write(to: backup)
-            print("加载数据失败：\(error)")
+            print(String(localized: "加载数据失败：\(error)"))
         }
     }
 
@@ -100,7 +100,7 @@ final class AppStore {
             let data = try encoder.encode(snapshot)
             try data.write(to: Storage.dataFile, options: .atomic)
         } catch {
-            print("保存数据失败：\(error)")
+            print(String(localized: "保存数据失败：\(error)"))
         }
     }
 
@@ -177,7 +177,7 @@ final class AppStore {
         func duplicateAgent(_ agent: Agent) {
         var copy = agent
         copy.id = UUID()
-        copy.name = agent.name + " 副本"
+        copy.name = agent.name + String(localized: " 副本")
         copy.createdAt = Date()
         agents.append(copy)
         save()
@@ -280,11 +280,11 @@ final class AppStore {
             if !base.isEmpty {
                 conversations[i].title = String(base.prefix(24))
             } else if let document = attachments.first(where: { $0.kind == .document }) {
-                conversations[i].title = String(("文档：" + (document.displayName ?? "文档")).prefix(24))
+                conversations[i].title = String((String(localized: "文档：") + (document.displayName ?? String(localized: "文档"))).prefix(24))
             } else if attachments.contains(where: { $0.kind == .videoFrame }) {
-                conversations[i].title = "视频分析"
+                conversations[i].title = String(localized: "视频分析")
             } else if !attachments.isEmpty {
-                conversations[i].title = "图片分析"
+                conversations[i].title = String(localized: "图片分析")
             }
         }
         save()
@@ -326,12 +326,12 @@ final class AppStore {
               let agent = agent(id: conversations[ci].agentID) else { return }
 
         guard let server = server(for: agent) else {
-            appendError("还没有配置服务器。请在「设置」中添加你的本地 AI 服务器。", to: conversationID)
+            appendError(String(localized: "还没有配置服务器。请在「设置」中添加你的本地 AI 服务器。"), to: conversationID)
             return
         }
         let model = effectiveModel(for: agent)
         guard !model.isEmpty else {
-            appendError("还没有选择模型。请在助手设置或服务器设置中填写模型名称。", to: conversationID)
+            appendError(String(localized: "还没有选择模型。请在助手设置或服务器设置中填写模型名称。"), to: conversationID)
             return
         }
 
@@ -362,7 +362,7 @@ final class AppStore {
         if agent.browserEnabled {
             // 浏览器助手：工具调用循环
             tasks[conversationID] = Task { [weak self] in
-                let activity = BackgroundActivity.begin("浏览器助手")
+                let activity = BackgroundActivity.begin(String(localized: "浏览器助手"))
                 await self?.runAgentReply(
                     conversationID: conversationID,
                     replyID: replyID,
@@ -377,7 +377,7 @@ final class AppStore {
         }
 
         tasks[conversationID] = Task { [weak self] in
-            let activity = BackgroundActivity.begin("生成回复")
+            let activity = BackgroundActivity.begin(String(localized: "生成回复"))
             await self?.streamWithRetry(
                 conversationID: conversationID,
                 replyID: replyID,
@@ -447,8 +447,8 @@ final class AppStore {
         }
         attempt += 1
         let seconds = RetryPolicy.delaySeconds(forAttempt: attempt)
-        retryStatus[conversationID] = "连接中断，\(seconds) 秒后重试（第 \(attempt)/\(media.retryLimit) 次）…"
-        LiveActivityManager.shared.update(conversationID, phase: .retrying, detail: "第 \(attempt) 次重试", force: true)
+        retryStatus[conversationID] = String(localized: "连接中断，\(seconds) 秒后重试（第 \(attempt)/\(media.retryLimit) 次）…")
+        LiveActivityManager.shared.update(conversationID, phase: .retrying, detail: String(localized: "第 \(attempt) 次重试"), force: true)
         do {
             try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
         } catch {
@@ -459,7 +459,7 @@ final class AppStore {
             retryStatus[conversationID] = nil
             return false
         }
-        retryStatus[conversationID] = "正在重新连接…"
+        retryStatus[conversationID] = String(localized: "正在重新连接…")
         return true
     }
 
@@ -522,11 +522,11 @@ final class AppStore {
             LiveActivityManager.shared.end(
                 conversationID,
                 success: succeeded,
-                preview: succeeded ? ThinkParser.split(message.content).answer : (message.errorText ?? "已停止"),
+                preview: succeeded ? ThinkParser.split(message.content).answer : (message.errorText ?? String(localized: "已停止")),
                 tokens: message.usage?.outputTokens ?? TokenEstimator.estimate(message.content + message.reasoning)
             )
             if message.content.isBlank && message.reasoning.isBlank && !message.isError {
-                conversations[ci].messages[mi].content = "（已停止）"
+                conversations[ci].messages[mi].content = String(localized: "（已停止）")
             }
             conversations[ci].updatedAt = Date()
             if succeeded {
@@ -603,34 +603,34 @@ final class AppStore {
             let items = memories(for: agent.id)
             if !items.isEmpty {
                 systemParts.append(
-                    "【长期记忆】\n以下是你在以往的对话中了解到的信息，请在合适的时候自然地运用，不要生硬地复述：\n"
+                    String(localized: "【长期记忆】\n以下是你在以往的对话中了解到的信息，请在合适的时候自然地运用，不要生硬地复述：\n")
                         + items.map { "- " + $0.text }.joined(separator: "\n")
                 )
             }
         }
         if !pinnedOutside.isEmpty {
             let lines = pinnedOutside.map { message -> String in
-                let speaker = message.role == .user ? "用户" : "你（\(agent.name)）"
+                let speaker = message.role == .user ? String(localized: "用户") : String(localized: "你（\(agent.name)）")
                 var text = message.role == .assistant ? ThinkParser.split(message.content).answer : message.content
                 let visualCount = message.attachments.filter(\.isVisual).count
                 if visualCount > 0 {
-                    text = "[附带 \(visualCount) 张图片/视频帧] " + text
+                    text = String(localized: "[附带 \(visualCount) 张图片/视频帧] ") + text
                 }
                 let documents = message.attachments.filter { $0.kind == .document }
                 if !documents.isEmpty {
                     text = Self.documentContext(documents) + text
                 }
-                return "\(speaker)：\(text.trimmed)"
+                return String(localized: "\(speaker)：\(text.trimmed)")
             }
-            systemParts.append("【置顶的重要内容】\n以下是用户置顶的早期对话内容，请始终参考：\n\n" + lines.joined(separator: "\n\n"))
+            systemParts.append(String(localized: "【置顶的重要内容】\n以下是用户置顶的早期对话内容，请始终参考：\n\n") + lines.joined(separator: "\n\n"))
         }
         if let summaryText {
-            systemParts.append("【本次对话早期内容的摘要】\n\(summaryText)")
+            systemParts.append(String(localized: "【本次对话早期内容的摘要】\n\(summaryText)"))
         }
 
         if !openings.isEmpty {
             // 开场白并入系统提示词
-            systemParts.append("（对话开始时你已经对用户说过：「\(openings.joined(separator: "\n"))」）")
+            systemParts.append(String(localized: "（对话开始时你已经对用户说过：「\(openings.joined(separator: "\n"))」）"))
         }
         let system = systemParts.joined(separator: "\n\n")
 
@@ -654,7 +654,7 @@ final class AppStore {
                     files = visual.map(\.fileName)
                     text = Self.describeAttachments(visual) + text
                 } else {
-                    text = "[此前发送过 \(visual.count) 张图片/视频帧]\n" + text
+                    text = String(localized: "[此前发送过 \(visual.count) 张图片/视频帧]\n") + text
                 }
             }
             result.append(RequestMessage(role: message.role, text: text, imageFiles: files))
@@ -671,10 +671,10 @@ final class AppStore {
         for document in documents {
             let content = Storage.loadText(document.fileName) ?? ""
             let limited = content.count > documentCharacterLimit
-                ? String(content.prefix(documentCharacterLimit)) + "\n……（文档较长，后面的内容已省略）"
+                ? String(content.prefix(documentCharacterLimit)) + String(localized: "\n……（文档较长，后面的内容已省略）")
                 : content
-            let pages = document.pageCount.map { "，共 \($0) 页" } ?? ""
-            parts.append("【附件文档：\(document.displayName ?? "文档")\(pages)】\n\(limited)\n【文档结束】")
+            let pages = document.pageCount.map { String(localized: "，共 \($0) 页") } ?? ""
+            parts.append(String(localized: "【附件文档：\(document.displayName ?? String(localized: "文档"))\(pages)】\n\(limited)\n【文档结束】"))
         }
         return parts.joined(separator: "\n\n") + "\n\n"
     }
@@ -696,13 +696,13 @@ final class AppStore {
 
         var lines: [String] = []
         if imageCount > 0 {
-            lines.append("前 \(imageCount) 张是图片。")
+            lines.append(String(localized: "前 \(imageCount) 张是图片。"))
         }
         for (index, group) in groups.enumerated() {
-            let times = group.1.compactMap(\.timestamp).map(Format.timestamp).joined(separator: "、")
-            let duration = group.1.first?.videoDuration.map { "，时长 \(Format.duration($0))" } ?? ""
-            let label = groups.count > 1 ? "视频\(index + 1)" : "视频"
-            lines.append("【\(label)\(duration)】以下 \(group.1.count) 张图片是按时间顺序从视频中抽取的画面，时间点：\(times)。")
+            let times = group.1.compactMap(\.timestamp).map(Format.timestamp).joined(separator: String(localized: "、"))
+            let duration = group.1.first?.videoDuration.map { String(localized: "，时长 \(Format.duration($0))") } ?? ""
+            let label = groups.count > 1 ? String(localized: "视频\(index + 1)") : String(localized: "视频")
+            lines.append(String(localized: "【\(label)\(duration)】以下 \(group.1.count) 张图片是按时间顺序从视频中抽取的画面，时间点：\(times)。"))
         }
         return lines.joined(separator: "\n") + "\n\n"
     }

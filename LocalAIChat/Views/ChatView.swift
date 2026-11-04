@@ -122,7 +122,7 @@ struct ChatView: View {
                 if hasBrowser { withAnimation { showBrowser = true } }
             }
             .alert(
-                "需要你的确认",
+                String(localized: "需要你的确认"),
                 isPresented: Binding(
                     get: { store.pendingConfirmations[conversationID] != nil },
                     set: { presented in
@@ -151,7 +151,7 @@ struct ChatView: View {
                         } label: {
                             Image(systemName: showBrowser ? "globe.badge.chevron.backward" : "globe")
                         }
-                        .accessibilityLabel(showBrowser ? "收起浏览器" : "显示浏览器")
+                        .accessibilityLabel(showBrowser ? String(localized: "收起浏览器") : String(localized: "显示浏览器"))
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -327,9 +327,9 @@ struct ChatView: View {
                     ForEach(conversation.messages) { message in
                         if message.id == contextStartID {
                             ContextDivider(
-                                title: "上下文从这里开始",
+                                title: String(localized: "上下文从这里开始"),
                                 systemImage: "scissors",
-                                actionTitle: "取消"
+                                actionTitle: String(localized: "取消")
                             ) {
                                 store.setContextStart(nil, in: conversationID)
                             }
@@ -343,7 +343,7 @@ struct ChatView: View {
                         )
                         .id(message.id)
                         if message.id == conversation.forkPointMessageID && message.id != conversation.messages.last?.id {
-                            ContextDivider(title: "以上内容来自原对话，以下是这个分支的新内容", systemImage: "arrow.triangle.branch")
+                            ContextDivider(title: String(localized: "以上内容来自原对话，以下是这个分支的新内容"), systemImage: "arrow.triangle.branch")
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -424,7 +424,7 @@ struct ChatView: View {
                 }
             }
 
-            if let status = isExtractingMemory ? "正在从对话中提取记忆…" : store.maintenanceStatus[conversationID] {
+            if let status = isExtractingMemory ? String(localized: "正在从对话中提取记忆…") : store.maintenanceStatus[conversationID] {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Label(status, systemImage: "brain.head.profile")
@@ -519,11 +519,11 @@ struct ChatView: View {
         let documents = pendingAttachments.filter { $0.kind == .document }.count
         let images = pendingAttachments.count - frames - documents
         var parts: [String] = []
-        if images > 0 { parts.append("\(images) 张图片") }
-        if frames > 0 { parts.append("\(frames) 个视频帧") }
-        if documents > 0 { parts.append("\(documents) 个文档") }
-        var text = parts.joined(separator: " + ") + " · 共 \(Format.bytes(total))"
-        if original > total { text += "（原始 \(Format.bytes(original))）" }
+        if images > 0 { parts.append(String(localized: "\(images) 张图片")) }
+        if frames > 0 { parts.append(String(localized: "\(frames) 个视频帧")) }
+        if documents > 0 { parts.append(String(localized: "\(documents) 个文档")) }
+        var text = parts.joined(separator: " + ") + String(localized: " · 共 \(Format.bytes(total))")
+        if original > total { text += String(localized: "（原始 \(Format.bytes(original))）") }
         return text
     }
 
@@ -549,21 +549,21 @@ struct ChatView: View {
             let progress = items.count > 1 ? " (\(index + 1)/\(items.count))" : ""
             do {
                 if item.supportedContentTypes.contains(where: AttachmentFactory.isVideo) {
-                    processingText = "正在读取视频…" + progress
+                    processingText = String(localized: "正在读取视频…") + progress
                     if let movie = try await item.loadTransferable(type: MovieFile.self) {
                         enqueueVideo(VideoSession(url: movie.url, fileSize: AttachmentFactory.fileSize(movie.url)))
                     }
                 } else {
-                    processingText = "正在压缩图片…" + progress
+                    processingText = String(localized: "正在压缩图片…") + progress
                     guard let data = try await item.loadTransferable(type: Data.self) else { continue }
                     if let attachment = await AttachmentFactory.image(from: data, settings: settings) {
                         pendingAttachments.append(attachment)
                     } else {
-                        errorMessage = "无法读取这张图片。"
+                        errorMessage = String(localized: "无法读取这张图片。")
                     }
                 }
             } catch {
-                errorMessage = "导入失败：\(error.localizedDescription)"
+                errorMessage = String(localized: "导入失败：\(error.localizedDescription)")
             }
         }
     }
@@ -581,28 +581,28 @@ struct ChatView: View {
                 ?? .data
             do {
                 if AttachmentFactory.isVideo(type) {
-                    processingText = "正在读取视频…" + progress
+                    processingText = String(localized: "正在读取视频…") + progress
                     let destination = FileManager.default.temporaryDirectory
                         .appendingPathComponent(UUID().uuidString)
                         .appendingPathExtension(url.pathExtension.isEmpty ? "mov" : url.pathExtension)
                     try FileManager.default.copyItem(at: url, to: destination)
                     enqueueVideo(VideoSession(url: destination, fileSize: AttachmentFactory.fileSize(destination)))
                 } else if DocumentImporter.isDocument(type) {
-                    processingText = "正在读取文档…" + progress
+                    processingText = String(localized: "正在读取文档…") + progress
                     let imported = await DocumentImporter.importFile(at: url, type: type, settings: settings)
                     pendingAttachments.append(contentsOf: imported.attachments)
                     if let note = imported.note { infoMessage = note }
                 } else {
-                    processingText = "正在压缩图片…" + progress
+                    processingText = String(localized: "正在压缩图片…") + progress
                     let data = try Data(contentsOf: url)
                     if let attachment = await AttachmentFactory.image(from: data, settings: settings) {
                         pendingAttachments.append(attachment)
                     } else {
-                        errorMessage = "无法读取图片：\(url.lastPathComponent)"
+                        errorMessage = String(localized: "无法读取图片：\(url.lastPathComponent)")
                     }
                 }
             } catch {
-                errorMessage = "导入失败：\(error.localizedDescription)"
+                errorMessage = String(localized: "导入失败：\(error.localizedDescription)")
             }
         }
     }
@@ -620,12 +620,12 @@ struct ChatView: View {
             let types = provider.registeredContentTypes
 
             if let type = types.first(where: AttachmentFactory.isVideo) {
-                processingText = "正在读取视频…" + progress
+                processingText = String(localized: "正在读取视频…") + progress
                 if let url = await DropLoader.copyFile(provider, type: type) {
                     enqueueVideo(VideoSession(url: url, fileSize: AttachmentFactory.fileSize(url)))
                 }
             } else if types.contains(where: { $0.conforms(to: .image) }) {
-                processingText = "正在压缩图片…" + progress
+                processingText = String(localized: "正在压缩图片…") + progress
                 if let data = await DropLoader.data(provider, type: .image),
                    let attachment = await AttachmentFactory.image(from: data, settings: settings) {
                     pendingAttachments.append(attachment)
@@ -638,7 +638,7 @@ struct ChatView: View {
                       type.conforms(to: .pdf) || DropLoader.looksLikeFile(provider),
                       let url = await DropLoader.copyFile(provider, type: type) {
                 // PDF / 文本文件
-                processingText = "正在读取文档…" + progress
+                processingText = String(localized: "正在读取文档…") + progress
                 let imported = await DocumentImporter.importFile(at: url, type: type, settings: settings)
                 pendingAttachments.append(contentsOf: imported.attachments)
                 if let note = imported.note { infoMessage = note }
@@ -648,7 +648,7 @@ struct ChatView: View {
             } else if let text = await DropLoader.text(provider), !text.isBlank {
                 // 文字：短的放进输入框，长的作为文档附件
                 if text.count > 2000 {
-                    if let attachment = await DocumentImporter.importText(text, name: "拖入的文字") {
+                    if let attachment = await DocumentImporter.importText(text, name: String(localized: "拖入的文字")) {
                         pendingAttachments.append(attachment)
                     }
                 } else {
@@ -664,12 +664,12 @@ struct ChatView: View {
         do {
             let items = try await store.extractMemoryCandidates(from: conversationID)
             if items.isEmpty {
-                infoMessage = "这次对话里没有发现需要新记住的信息。"
+                infoMessage = String(localized: "这次对话里没有发现需要新记住的信息。")
             } else {
                 memoryCandidates = MemoryCandidateBatch(texts: items)
             }
         } catch {
-            errorMessage = "提取记忆失败：" + LLMError.friendlyDescription(error)
+            errorMessage = String(localized: "提取记忆失败：") + LLMError.friendlyDescription(error)
         }
     }
 
@@ -690,7 +690,7 @@ struct ChatView: View {
     }
 
     private func addVideoFrames(_ frames: [ExtractedFrame], duration: Double, session: VideoSession) async {
-        processingText = "正在保存视频帧…"
+        processingText = String(localized: "正在保存视频帧…")
         let attachments = await AttachmentFactory.videoFrames(frames, duration: duration, originalByteCount: session.fileSize)
         pendingAttachments.append(contentsOf: attachments)
         processingText = nil

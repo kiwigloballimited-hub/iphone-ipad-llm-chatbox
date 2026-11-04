@@ -23,8 +23,8 @@ enum VideoError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noVideoTrack: return "这个文件里没有视频轨道。"
-        case .noFrames: return "未能从视频中抽取到任何画面。"
+        case .noVideoTrack: return String(localized: "这个文件里没有视频轨道。")
+        case .noFrames: return String(localized: "未能从视频中抽取到任何画面。")
         }
     }
 }

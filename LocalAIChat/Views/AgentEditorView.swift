@@ -39,7 +39,7 @@ struct AgentEditorView: View {
                     Text("系统提示词会在每次对话时发送给模型，决定助手的人格和行为。")
                 }
             }
-            .navigationTitle(isNew ? "新建助手" : "编辑助手")
+            .navigationTitle(isNew ? String(localized: "新建助手") : String(localized: "编辑助手"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -111,7 +111,7 @@ struct AgentEditorView: View {
     private var modelSection: some View {
         Section {
             Picker("服务器", selection: $agent.serverID) {
-                Text("默认（\(store.servers.first?.name ?? "无")）").tag(UUID?.none)
+                Text("默认（\(store.servers.first?.name ?? String(localized: "无"))）").tag(UUID?.none)
                 ForEach(store.servers) { server in
                     Text(server.name).tag(Optional(server.id))
                 }
@@ -154,14 +154,14 @@ struct AgentEditorView: View {
         Section {
             Toggle("直接编写系统提示词", isOn: $agent.persona.useCustomPrompt)
             if agent.persona.useCustomPrompt {
-                PersonaField(title: "系统提示词", placeholder: "完整描述助手的人格、背景和行为规则…", text: $agent.persona.customPrompt, lines: 6...20)
+                PersonaField(title: String(localized: "系统提示词"), placeholder: String(localized: "完整描述助手的人格、背景和行为规则…"), text: $agent.persona.customPrompt, lines: 6...20)
             } else {
-                PersonaField(title: "身份 / 角色", placeholder: "例如：一位温柔耐心的小学语文老师", text: $agent.persona.role)
-                PersonaField(title: "性格", placeholder: "例如：开朗、细心、爱鼓励人", text: $agent.persona.personality)
-                PersonaField(title: "说话风格", placeholder: "例如：简短亲切，偶尔用 emoji，多用比喻", text: $agent.persona.speakingStyle)
-                PersonaField(title: "背景故事", placeholder: "人物的经历、所处的世界观、与用户的关系…", text: $agent.persona.background, lines: 2...10)
-                PersonaField(title: "行为准则", placeholder: "必须做什么、不能做什么，例如：只用英语回答；不要直接给出答案", text: $agent.persona.rules, lines: 2...10)
-                PersonaField(title: "对话示例（可选）", placeholder: "用户：……\n助手：……", text: $agent.persona.exampleDialogue, lines: 2...10)
+                PersonaField(title: String(localized: "身份 / 角色"), placeholder: String(localized: "例如：一位温柔耐心的小学语文老师"), text: $agent.persona.role)
+                PersonaField(title: String(localized: "性格"), placeholder: String(localized: "例如：开朗、细心、爱鼓励人"), text: $agent.persona.personality)
+                PersonaField(title: String(localized: "说话风格"), placeholder: String(localized: "例如：简短亲切，偶尔用 emoji，多用比喻"), text: $agent.persona.speakingStyle)
+                PersonaField(title: String(localized: "背景故事"), placeholder: String(localized: "人物的经历、所处的世界观、与用户的关系…"), text: $agent.persona.background, lines: 2...10)
+                PersonaField(title: String(localized: "行为准则"), placeholder: String(localized: "必须做什么、不能做什么，例如：只用英语回答；不要直接给出答案"), text: $agent.persona.rules, lines: 2...10)
+                PersonaField(title: String(localized: "对话示例（可选）"), placeholder: String(localized: "用户：……\n助手：……"), text: $agent.persona.exampleDialogue, lines: 2...10)
             }
         } header: {
             Text("人格设定")
@@ -177,7 +177,7 @@ struct AgentEditorView: View {
                 NavigationLink {
                     MemoryListView(agentID: agent.id)
                 } label: {
-                    LabeledContent("记忆本", value: "\(store.memories(for: agent.id).count) 条")
+                    LabeledContent("记忆本", value: String(localized: "\(store.memories(for: agent.id).count) 条"))
                 }
                 Toggle("自动记住新信息", isOn: $agent.autoMemory)
             }
@@ -250,7 +250,7 @@ struct AgentEditorView: View {
                 HStack {
                     Text("最大回复长度")
                     Spacer()
-                    Text(agent.maxTokens == 0 ? "不限" : "\(agent.maxTokens)")
+                    Text(agent.maxTokens == 0 ? String(localized: "不限") : "\(agent.maxTokens)")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
@@ -265,7 +265,7 @@ struct AgentEditorView: View {
                 HStack {
                     Text("记忆的历史消息")
                     Spacer()
-                    Text(agent.contextMessageLimit == 0 ? "全部" : "\(agent.contextMessageLimit) 条")
+                    Text(agent.contextMessageLimit == 0 ? String(localized: "全部") : String(localized: "\(agent.contextMessageLimit) 条"))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
@@ -281,10 +281,10 @@ struct AgentEditorView: View {
             ))
             if agent.penalties != nil {
                 ParameterSlider(
-                    title: "重复惩罚",
+                    title: String(localized: "重复惩罚"),
                     value: $agent.penaltyValues.repeatPenalty,
                     range: 1.0...2.0, step: 0.01,
-                    lowLabel: "1.0 不惩罚", highLabel: "越大越不重复"
+                    lowLabel: String(localized: "1.0 不惩罚"), highLabel: String(localized: "越大越不重复")
                 )
                 Stepper(value: $agent.penaltyValues.repeatLastN, in: 0...2048, step: 32) {
                     HStack {
@@ -296,16 +296,16 @@ struct AgentEditorView: View {
                     }
                 }
                 ParameterSlider(
-                    title: "频率惩罚",
+                    title: String(localized: "频率惩罚"),
                     value: $agent.penaltyValues.frequencyPenalty,
                     range: -2.0...2.0, step: 0.05,
-                    lowLabel: "0 不惩罚", highLabel: "重复越多罚越重"
+                    lowLabel: String(localized: "0 不惩罚"), highLabel: String(localized: "重复越多罚越重")
                 )
                 ParameterSlider(
-                    title: "存在惩罚",
+                    title: String(localized: "存在惩罚"),
                     value: $agent.penaltyValues.presencePenalty,
                     range: -2.0...2.0, step: 0.05,
-                    lowLabel: "0 不惩罚", highLabel: "鼓励新话题"
+                    lowLabel: String(localized: "0 不惩罚"), highLabel: String(localized: "鼓励新话题")
                 )
                 Button("恢复推荐值") { agent.penalties = PenaltySettings() }
             }
@@ -325,9 +325,9 @@ struct AgentEditorView: View {
 
     private var defaultModelPlaceholder: String {
         if let model = selectedServer?.defaultModel, !model.isBlank {
-            return "默认：\(model)"
+            return String(localized: "默认：\(model)")
         }
-        return "模型名称，例如 qwen2.5vl:7b"
+        return String(localized: "模型名称，例如 qwen2.5vl:7b")
     }
 
     private func fetchModels() async {
@@ -337,7 +337,7 @@ struct AgentEditorView: View {
         defer { isLoadingModels = false }
         do {
             availableModels = try await LLMClient(server: server).listModels()
-            if availableModels.isEmpty { modelError = "服务器上没有可用的模型。" }
+            if availableModels.isEmpty { modelError = String(localized: "服务器上没有可用的模型。") }
         } catch {
             modelError = LLMError.friendlyDescription(error)
         }
@@ -397,7 +397,7 @@ private struct PromptPreview: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                Text(prompt.isEmpty ? "（空）" : prompt)
+                Text(prompt.isEmpty ? String(localized: "（空）") : prompt)
                     .font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)

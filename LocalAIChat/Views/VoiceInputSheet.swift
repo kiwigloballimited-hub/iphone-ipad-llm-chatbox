@@ -30,7 +30,7 @@ struct VoiceInputSheet: View {
                             TextField("说点什么…", text: $text, axis: .vertical)
                                 .lineLimit(3...12)
                         } else {
-                            Text(recognizer.transcript.isEmpty ? "请开始说话…" : recognizer.transcript)
+                            Text(recognizer.transcript.isEmpty ? String(localized: "请开始说话…") : recognizer.transcript)
                                 .foregroundStyle(recognizer.transcript.isEmpty ? .secondary : .primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -66,9 +66,9 @@ struct VoiceInputSheet: View {
                     .frame(height: 140)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(recognizer.isRecording ? "停止录音" : "开始录音")
+                .accessibilityLabel(recognizer.isRecording ? String(localized: "停止录音") : String(localized: "开始录音"))
 
-                Text(recognizer.isRecording ? "说完后点一下停止" : "点按麦克风开始说话")
+                Text(recognizer.isRecording ? String(localized: "说完后点一下停止") : String(localized: "点按麦克风开始说话"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
