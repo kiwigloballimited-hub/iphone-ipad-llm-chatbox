@@ -119,7 +119,7 @@ extension AppStore {
             conversations[i].summaryCoversUntil = lastCovered.createdAt
             save()
         } catch {
-            print(String(localized: "生成摘要失败：\(error)"))
+            print("生成摘要失败：\(error)") // l10n-skip
         }
     }
 
@@ -147,7 +147,7 @@ extension AppStore {
             }
             save()
         } catch {
-            print(String(localized: "自动提取记忆失败：\(error)"))
+            print("自动提取记忆失败：\(error)") // l10n-skip
         }
     }
 

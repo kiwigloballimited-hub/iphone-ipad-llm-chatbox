@@ -77,7 +77,7 @@ final class AppStore {
             // 解析失败时保留一份备份，避免数据被覆盖丢失
             let backup = Storage.baseDirectory.appendingPathComponent("data-backup-\(Int(Date().timeIntervalSince1970)).json")
             try? data.write(to: backup)
-            print(String(localized: "加载数据失败：\(error)"))
+            print("加载数据失败：\(error)") // l10n-skip
         }
     }
 
@@ -100,7 +100,7 @@ final class AppStore {
             let data = try encoder.encode(snapshot)
             try data.write(to: Storage.dataFile, options: .atomic)
         } catch {
-            print(String(localized: "保存数据失败：\(error)"))
+            print("保存数据失败：\(error)") // l10n-skip
         }
     }
 
