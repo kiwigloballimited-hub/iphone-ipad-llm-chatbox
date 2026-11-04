@@ -1,0 +1,234 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "问${applicationName}": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Ask ${applicationName}",
+              "Ask ${applicationName} a question"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "问${applicationName}"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "問${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "用${applicationName}提问": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Ask a question with ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用${applicationName}提问"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用${applicationName}提問"
+            ]
+          }
+        }
+      }
+    },
+    "问${applicationName}的${agent}": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Ask ${agent} in ${applicationName}",
+              "Ask ${applicationName}'s ${agent}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "问${applicationName}的${agent}"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "問${applicationName}的${agent}"
+            ]
+          }
+        }
+      }
+    },
+    "用${applicationName}语音提问": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Voice ask with ${applicationName}",
+              "Ask ${applicationName} by voice"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用${applicationName}语音提问"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用${applicationName}語音提問"
+            ]
+          }
+        }
+      }
+    },
+    "${applicationName}语音提问": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "${applicationName} voice question"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "${applicationName}语音提问"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "${applicationName}語音提問"
+            ]
+          }
+        }
+      }
+    },
+    "在${applicationName}新建对话": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "New chat in ${applicationName}",
+              "Start a new chat in ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "在${applicationName}新建对话"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "在${applicationName}新建對話"
+            ]
+          }
+        }
+      }
+    },
+    "打开${applicationName}的${agent}": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Open ${agent} in ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "打开${applicationName}的${agent}"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "開啟${applicationName}的${agent}"
+            ]
+          }
+        }
+      }
+    },
+    "发送给${applicationName}": {
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Send to ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "发送给${applicationName}"
+            ]
+          }
+        },
+        "zh-Hant": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "傳送給${applicationName}"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
