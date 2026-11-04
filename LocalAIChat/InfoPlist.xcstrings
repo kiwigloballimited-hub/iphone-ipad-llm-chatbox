@@ -88,7 +88,30 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "需要訪問本地網路，以連線你在區域網中執行的 AI 伺服器（如 Ollama、LM Studio）。"
+            "value": "需要存取本地網路，以連線你在區域網路中執行的 AI 伺服器（如 Ollama、LM Studio）。"
+          }
+        }
+      }
+    },
+    "CFBundleName": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LocalAIChat"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LocalAIChat"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LocalAIChat"
           }
         }
       }

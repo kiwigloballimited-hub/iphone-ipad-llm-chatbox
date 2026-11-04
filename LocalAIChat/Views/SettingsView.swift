@@ -180,6 +180,12 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button("更改 App 语言", systemImage: "globe") {
+                        // 打开系统设置中本 App 的页面，可以单独选择 App 的语言
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
                     LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
                     LabeledContent("助手数量", value: "\(store.agents.count)")
                     LabeledContent("对话数量", value: "\(store.conversations.count)")

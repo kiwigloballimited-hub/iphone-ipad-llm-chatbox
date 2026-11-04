@@ -10,6 +10,8 @@ An iPhone / iPad app for chatting with **your own AI server** (Ollama, LM Studio
 
 **[English](#english)** · **[中文说明](#中文说明)**
 
+**App languages · App 语言:** English · 简体中文 · 繁體中文 — follows the system language; change it per app in *Settings › Local AI › Language*. · 跟随系统语言，也可以在「设置 › 本地AI › 语言」中单独切换。
+
 ## Screenshots · 截图
 
 <!--
